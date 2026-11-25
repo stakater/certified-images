@@ -1,0 +1,7 @@
+on: push
+jobs:
+  x:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ nonexistent.context }}
+      - uses: actions/checkout

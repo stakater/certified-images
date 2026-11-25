@@ -1,0 +1,19 @@
+kind: container
+name: image-good
+displayName: Stakater build of Example
+summary: Example image used by tests
+description: >-
+  Fixture that satisfies every rule in scripts/check-image.sh.
+upstream:
+  repo: https://github.com/example/example
+  # renovate: datasource=github-tags depName=example/example
+  version: v1.2.3
+  commit: 0123456789abcdef0123456789abcdef01234567
+  license: Apache-2.0
+build:
+  goVersion: "1.27.3"
+  prefetch: '{"type": "gomod", "path": "."}'
+redhat:
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+  secretSuffix: IMAGE_GOOD
+consumers: []

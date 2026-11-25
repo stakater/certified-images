@@ -17,7 +17,10 @@ This is a build-and-release repo, not a service: the "code" is Containerfiles,
   `scripts/new-image.sh` exist but have never run.
 - `.github/workflows/build-certify.yaml` and `.github/CODEOWNERS` are described in
   the README and ADRs but **do not exist in the repo**.
-- There is no `make verify`, no linter config and no tests.
+- `make verify` exists (story DX.2) and runs on every PR and after every agent
+  edit. It checks Containerfiles, scripts, workflows, `renovate.json` and
+  `image.yaml`. It does **not** build an image; nothing that needs a built image
+  is checked yet.
 - The ADRs were reviewed and revised on 2026-11-25 (story DX.1). They are
   accepted when the first PR merges (ADR-001). ADR-005 and ADR-006 stay
   Proposed. Treat every ⚠️ in `docs/` as unverified.
@@ -88,17 +91,25 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 ## Testing — what "red → green" means here
 
 There is no application code, so tests are checks on the factory's inputs and
-outputs. Target pyramid (none of it exists yet; story DX.2 builds it):
+outputs. `make verify` runs the Static and Unit levels today; Image and End to
+end arrive with story P.1.
 
 | Level | Checks | Tools |
 |---|---|---|
-| Static | Containerfile lint, shell lint, `image.yaml` schema, Renovate config, workflow lint | hadolint, shellcheck, a JSON Schema, `renovate-config-validator`, actionlint |
-| Unit | Scripts and CI helper logic (tag-to-commit check, VEX expiry check) against fixtures | bats or plain shell tests |
+| Static | Containerfile lint, shell lint, `image.yaml` rules, Renovate config, workflow lint | hadolint, shellcheck, `scripts/check-image.sh`, `renovate-config-validator`, actionlint |
+| Unit | Scripts and check logic against fixtures; every check is shown to fail on a broken input | `tests/run.sh` (plain bash) |
 | Image | The built image has the required labels, `/licenses`, non-root user, and starts | container-structure-test or equivalent, preflight dry run |
 | End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight | the CI workflow itself |
 
-Until `make verify` exists, say plainly which checks were run by hand and which
-were not run.
+Rules for working with it:
+
+- **Run `make verify` before calling a change done**, and report its real
+  output. It needs a running container engine (`ENGINE=docker` or `podman`);
+  every tool is a container image pinned by digest in the `Makefile`.
+- **A new rule starts as a failing case in `tests/run.sh`**, then the rule.
+- A check that cannot run must fail. Never make one skip silently.
+- For anything `make verify` does not cover, say plainly what was checked by
+  hand and what was not checked.
 
 ## Conventions
 
@@ -122,6 +133,11 @@ images/<name>/Containerfile    hermetic build stage + parameterised UBI runtime 
 images/<name>/vex.openvex.json optional CVE exceptions
 images/<name>/patches/*.patch  optional dependency-only patches (ADR-003 §6)
 scripts/new-image.sh           scaffolds a new image from the OpenCost one
+scripts/check-image.sh         our own rules for one image directory
+scripts/verify-hook.sh         agent edit hook that runs make verify
+Makefile                       make verify: every check, tools pinned by digest
+tests/run.sh, tests/fixtures/  tests for the scripts and the checks
+.github/workflows/verify.yaml  runs make verify on pull requests
 renovate.json                  bumps upstream tag + commit and the UBI base digest
 docs/vision.md, method.md, roadmap.md, planning/, adr/, references.md
 ```

@@ -26,12 +26,12 @@ decisions or re-derives the method from chat history.*
   reviewed and is either accepted as is, revised, or marked Proposed with its
   open questions listed; the README no longer describes files that do not exist.
 
-**Story DX.2 — `make verify` runs the static and unit checks** 👍 *(approved 2026-11-25)*
+**Story DX.2 — `make verify` runs the static and unit checks** ✅ *(planning: [dx2-make-verify](planning/dx2-make-verify.md))*
 *As a contributor, I want one command that lints Containerfiles, scripts,
 `image.yaml`, the Renovate config and workflows, so that "red → green" is
 possible before any CI exists.*
-- **Done:** `make verify` runs hadolint, shellcheck, an `image.yaml` schema
-  check, `renovate-config-validator` and actionlint, plus tests for
+- **Done:** `make verify` runs hadolint, shellcheck, the `image.yaml` rules
+  (`scripts/check-image.sh`), `renovate-config-validator` and actionlint, plus tests for
   `scripts/new-image.sh`; it fails on a deliberately broken fixture for each;
   a Claude Code edit hook runs it after edits to those files.
 

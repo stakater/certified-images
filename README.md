@@ -25,7 +25,8 @@ images/<name>/patches/*.patch   # optional dependency-only patches (ADR-003 §6)
 .github/workflows/build-certify.yaml
 .github/CODEOWNERS              # factory team merges to main (= publish)
 renovate.json                   # upstream tag+commit, UBI digest
-scripts/new-image.sh
+Makefile, tests/                # make verify: lint + image.yaml rules + script tests
+scripts/new-image.sh, scripts/check-image.sh
 docs/adr/, docs/references.md
 ```
 
@@ -34,7 +35,7 @@ PR: pinned clone (fails if the tag moved) → Hermeto prefetch → build with ne
 main adds: push to `quay.io/redhat-isv-containers/<componentId>` → cosign sign and SBOM attestations (image + dependencies) → build provenance → `preflight --submit`. Partner Connect then auto-publishes.
 
 ## Add an image
-1. `scripts/new-image.sh <name> <owner/repo> <tag>`. This fills in the tag's commit; then edit the build stage and `build.prefetch`.
+1. `scripts/new-image.sh <name> <owner/repo> <tag>`. This fills in the tag's commit; then edit the build stage and `build.prefetch`. Run `make verify` until it passes: it will reject the scaffold until the licence and Go version are filled in.
 2. Check the admission rules (ADR-002 rule 1). Record the licence in `image.yaml`.
 3. Partner Connect → product → Add component → Container image, **UBI**, **Red Hat Container Registry**. Put the component ID in `image.yaml`.
 4. Submit the export questionnaire (batch several new components in one form).
