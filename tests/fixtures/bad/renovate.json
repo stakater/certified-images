@@ -1,0 +1,5 @@
+{
+  "extends": ["config:recommended"],
+  "notARealOption": true,
+  "packageRules": [{"matchNoSuchThing": ["x"]}]
+}

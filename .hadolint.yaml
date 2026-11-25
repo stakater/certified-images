@@ -1,0 +1,2 @@
+# hadolint config. Every ignored rule needs a reason here.
+failure-threshold: warning

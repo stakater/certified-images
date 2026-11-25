@@ -100,8 +100,9 @@ All in `tests/run.sh`, written and seen failing before the Makefile and
 - **`new-image.sh`:** with a stub `git` on `PATH` (no network), it writes an
   `image.yaml` carrying the dereferenced commit of an annotated tag, falls back
   to the tag's own SHA for a lightweight tag, refuses an existing directory,
-  fails on an unknown tag, and its output passes `check-image.sh` rules 1–3
-  and 5–9 (rule 4 fails on purpose: the scaffold writes `license: TODO`).
+  fails on an unknown tag, and its output fails `check-image.sh` on exactly two
+  rules, on purpose: rule 4 (the scaffold writes `license: TODO`) and rule 8
+  (it writes `goVersion: "TODO"`). A person has to fill in both.
 - **Hook:** given a payload naming `images/x/Containerfile` it runs verify;
   given `docs/x.md` it does nothing.
 

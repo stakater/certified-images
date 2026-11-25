@@ -43,7 +43,7 @@ There are two loops:
 | Recorded decisions | `docs/adr/`: history is never rewritten; an ADR is revised with the old version archived, or superseded | ADR-001; review |
 | Prior art first | every ADR names the reference it copies, or names the gap as a risk | `docs/references.md`; ADR-002 rule 7; review |
 | Story-driven delivery | house story format, a **Done:** line, the lifecycle below, one story at a time | roadmap convention; PRs cite the story |
-| Test first | red → green on the factory's checks: lint, schema, script tests, image tests | **not yet enforced.** Story DX.2 adds `make verify` and an edit hook |
+| Test first | red → green on the factory's checks: lint, `image.yaml` rules, script tests | `make verify`, run by the edit hook (`.claude/settings.json`) and on every PR (`verify.yaml`). Image-level tests are **not yet enforced** (story P.1) |
 | Hermetic pipeline as the end-to-end test | a PR runs prefetch → offline build → SBOM → CVE gate → preflight | **not yet enforced.** The workflow does not exist (story P.1) |
 | Outer audit | published images are re-checked from outside on a schedule (below) | **not yet enforced.** Story to be written after the first publish |
 | Context persistence | `CLAUDE.md` invariants + context-capsule planning docs | `docs/planning/TEMPLATE.md` |

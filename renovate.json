@@ -6,7 +6,7 @@
     {
       "customType": "regex",
       "description": "Upstream tag + pinned commit in images/*/image.yaml (ADR-003)",
-      "fileMatch": ["^images/[^/]+/image\\.yaml$"],
+      "managerFilePatterns": ["/^images/[^/]+/image\\.yaml$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s*version: (?<currentValue>\\S+)\\n\\s*commit: (?<currentDigest>[a-f0-9]{40})"
       ],
@@ -15,7 +15,7 @@
     {
       "customType": "regex",
       "description": "Parameterised UBI base in Containerfiles (ADR-004): pin and refresh tag@digest",
-      "fileMatch": ["(^|/)Containerfile(\\.ubi)?$"],
+      "managerFilePatterns": ["/(^|/)Containerfile(\\.ubi)?$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>docker) depName=(?<depName>\\S+)\\nARG BASE_TAG=(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"
       ],
@@ -23,7 +23,7 @@
     }
   ],
   "dockerfile": {
-    "fileMatch": ["(^|/)Containerfile(\\.ubi)?$"],
+    "managerFilePatterns": ["/(^|/)Containerfile(\\.ubi)?$/"],
     "pinDigests": true
   },
   "packageRules": [
