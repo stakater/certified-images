@@ -9,7 +9,7 @@ FIX="tests/fixtures"
 TMP="$ROOT/tests/.tmp"
 rm -rf "$TMP"
 mkdir -p "$TMP"
-trap 'rm -rf "$TMP"' EXIT
+trap '[ -n "${KEEP_TMP:-}" ] || rm -rf "$TMP"' EXIT
 
 pass=0
 fail=0
@@ -180,8 +180,10 @@ d=$(fs_image ok-annotated v1.0.0 "$SHA1")
 expect_pass "fetch-source: annotated tag at the pinned commit" scripts/fetch-source.sh "$d" "$TMP/fs/ok-annotated/src"
 expect_pass "fetch-source: checked-out tree is the pinned commit, not the branch tip" \
   bash -c "! grep -q two '$TMP/fs/ok-annotated/src/main.go'"
-expect_pass "fetch-source: .git is removed from the build context" \
-  bash -c "[ ! -e '$TMP/fs/ok-annotated/src/.git' ]"
+# Hermeto refuses a source directory that is not a git repository, so .git
+# stays until prefetch.sh has run.
+expect_pass "fetch-source: .git is kept for the prefetch" \
+  bash -c "[ -d '$TMP/fs/ok-annotated/src/.git' ]"
 d=$(fs_image ok-light v1.1.0 "$SHA2")
 expect_pass "fetch-source: lightweight tag at the pinned commit" scripts/fetch-source.sh "$d" "$TMP/fs/ok-light/src"
 d=$(fs_image moved v1.0.0 "$SHA2")
@@ -213,6 +215,64 @@ expect_fail "fetch-source: a patch touching source code fails" "main.go.*ADR-003
 d=$(fs_image patch-stale v1.0.0 "$SHA1")
 mkdir -p "$d/patches" && make_patch go.mod 'x' | sed 's/go 1.27/go 9.99/' >"$d/patches/0001-stale.patch"
 expect_fail "fetch-source: a patch that does not apply fails" "" scripts/fetch-source.sh "$d" "$TMP/fs/patch-stale/src"
+
+# ------------------------------------------------------------ check-vex.sh
+# NOW pins "today" to 2026-12-01T00:00:00Z so the expiry cases do not rot.
+VEX_NOW=1796083200
+
+# vex_image <case> <statements-json>: the good fixture plus a VEX file
+vex_image() {
+  local dir="$TMP/vex/$1/image-good"
+  mkdir -p "$dir"
+  cp "$FIX/image-good/image.yaml" "$dir/"
+  [ -z "$2" ] || cat >"$dir/vex.openvex.json" <<JSON
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/stakater/certified-images/images/image-good/vex",
+  "author": "tests",
+  "timestamp": "2026-11-25T00:00:00Z",
+  "version": 1,
+  "statements": [$2]
+}
+JSON
+  echo "$dir"
+}
+NA='"vulnerability":{"name":"CVE-0000-00001"},"status":"not_affected","justification":"vulnerable_code_not_in_execute_path","impact_statement":"not reachable","x-stakater-owner":"a@stakater.com"'
+UI='"vulnerability":{"name":"CVE-0000-00002"},"status":"under_investigation","x-stakater-owner":"a@stakater.com"'
+THIS='"products":[{"@id":"pkg:oci/image-good?tag=v1.2.3-1"}]'
+OTHER='"products":[{"@id":"pkg:oci/image-good?tag=v1.2.2-4"}]'
+
+expect_pass "check-vex: no VEX file passes" \
+  env NOW=$VEX_NOW scripts/check-vex.sh "$(vex_image none '')"
+# Built in variables first: bash 3.2 (macOS) brace-expands "{a,b}" when it is
+# quoted inside a command substitution.
+stmt_na="{$NA,$THIS}"
+stmt_ui="{$UI,$THIS,\"x-stakater-expires\":\"2026-12-20T00:00:00Z\"}"
+expect_pass "check-vex: not_affected for the current upstream version passes" \
+  env NOW=$VEX_NOW scripts/check-vex.sh "$(vex_image na-ok "$stmt_na")"
+expect_pass "check-vex: under_investigation with a future expiry passes" \
+  env NOW=$VEX_NOW scripts/check-vex.sh "$(vex_image ui-ok "$stmt_ui")"
+
+while IFS='|' read -r name stmt pattern; do
+  [ -z "$name" ] && continue
+  expect_fail "check-vex: $name fails" "$pattern" \
+    env NOW=$VEX_NOW scripts/check-vex.sh "$(vex_image "$name" "$stmt")"
+done <<CASES
+not_affected for another upstream version|{$NA,$OTHER}|CVE-0000-00001.*v1.2.3
+not_affected without a justification|{"vulnerability":{"name":"CVE-0000-00001"},"status":"not_affected","x-stakater-owner":"a@stakater.com",$THIS}|justification
+statement without an owner|{"vulnerability":{"name":"CVE-0000-00001"},"status":"not_affected","justification":"x","impact_statement":"y",$THIS}|owner
+under_investigation without an expiry|{$UI,$THIS}|CVE-0000-00002.*expires
+under_investigation past its expiry|{$UI,$THIS,"x-stakater-expires":"2026-11-30T00:00:00Z"}|CVE-0000-00002.*expired
+expiry more than 30 days after the document timestamp|{$UI,$THIS,"x-stakater-expires":"2027-02-01T00:00:00Z"}|30 days
+accepted-risk affected statement without an expiry|{"vulnerability":{"name":"CVE-0000-00003"},"status":"affected","action_statement":"accepted","x-stakater-owner":"a@stakater.com",$THIS}|CVE-0000-00003.*expires
+unknown status|{"vulnerability":{"name":"CVE-0000-00004"},"status":"ignored","x-stakater-owner":"a@stakater.com",$THIS}|status
+CASES
+
+d=$(vex_image broken-json '')
+echo '{ not json' >"$d/vex.openvex.json"
+expect_fail "check-vex: a file that is not JSON fails" "" env NOW=$VEX_NOW scripts/check-vex.sh "$d"
+expect_pass "check-vex: the documented example is valid in shape" \
+  bash -c "d=\$(mktemp -d '$TMP/vexex.XXXX')/EXAMPLE && mkdir -p \$d && sed -e 's/^name: image-good/name: EXAMPLE/' '$FIX/image-good/image.yaml' >\$d/image.yaml && cp docs/vex-example.openvex.json \$d/vex.openvex.json && NOW=$VEX_NOW scripts/check-vex.sh \$d"
 
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }

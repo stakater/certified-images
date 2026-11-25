@@ -7,7 +7,8 @@
 #    was moved or re-pointed after we pinned it stops the build.
 # 3. Applies images/<name>/patches/*.patch, which may touch dependency
 #    manifests and lockfiles only.
-# 4. Removes .git, so the output is a plain build context.
+# .git is left in place: Hermeto refuses a source directory that is not a git
+# repository. scripts/prefetch.sh removes it once the prefetch is done.
 set -euo pipefail
 
 ENGINE=${ENGINE:-docker}
@@ -71,5 +72,4 @@ for patch in "$DIR"/patches/*.patch; do
   echo "fetch-source: applied $(basename "$patch")" >&2
 done
 
-rm -rf "$OUT/.git"
 echo "fetch-source: $REPO $VERSION @ $COMMIT -> $OUT" >&2
