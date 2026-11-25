@@ -336,7 +336,14 @@ expect_pass "check-vex: the documented example is valid in shape" \
 
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
-hook_runs() { hook "{\"tool_input\":{\"file_path\":\"$ROOT/$1\"}}" | grep -q VERIFY-RAN; }
+# Capture first, then match the command's own output line. Piping straight into
+# `grep -q` let grep exit on the hook's announcement line and kill the hook
+# with SIGPIPE, which failed the pipeline at random.
+hook_runs() {
+  local out
+  out=$(hook "{\"tool_input\":{\"file_path\":\"$ROOT/$1\"}}") || return 1
+  printf '%s\n' "$out" | grep -qx 'VERIFY-RAN'
+}
 hook_skips() { ! hook_runs "$1"; }
 
 for f in images/opencost/Containerfile images/opencost/image.yaml scripts/new-image.sh \
