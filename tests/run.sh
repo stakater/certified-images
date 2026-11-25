@@ -151,7 +151,9 @@ SANDBOX="$TMP/sandbox"
 mkdir -p "$SANDBOX/scripts" "$SANDBOX/images" "$SANDBOX/bin"
 cp scripts/new-image.sh scripts/check-image.sh scripts/lib.sh "$SANDBOX/scripts/"
 cp tools.env "$SANDBOX/"
-cp -R images/opencost "$SANDBOX/images/"
+# No existing image is copied in: the scaffold must come from the template,
+# not from whichever image happens to exist.
+cp -R scripts/templates "$SANDBOX/scripts/"
 cat >"$SANDBOX/bin/git" <<'STUB'
 #!/usr/bin/env bash
 # Stub for `git ls-remote <url> <ref>`.
@@ -174,12 +176,17 @@ expect_pass "new-image: annotated tag pins the dereferenced commit" \
   has images/annotated/image.yaml "commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 expect_pass "new-image: Containerfile carries the same commit" \
   has images/annotated/Containerfile "^ARG UPSTREAM_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+expect_pass "new-image: no template placeholder is left behind" \
+  bash -c "! grep -rn '__[A-Z]*__' '$SANDBOX/images/annotated'"
+expect_pass "new-image: the scaffolded Containerfile passes hadolint" \
+  make -s lint-containerfiles CONTAINERFILES="tests/.tmp/sandbox/images/annotated/Containerfile"
 expect_pass "new-image: scaffolds a lightweight tag" new_image light example/light v2.0.0
 expect_pass "new-image: lightweight tag pins the tag's own commit" \
   has images/light/image.yaml "commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 expect_fail "new-image: refuses an existing directory" "exists" new_image annotated example/annotated v1.0.0
 expect_fail "new-image: fails on an unknown tag" "not found" new_image ghost example/ghost v9.9.9
 expect_fail "new-image: missing arguments fail" "" new_image only-a-name
+expect_fail "new-image: refuses a name that is not a lowercase slug" "lowercase" new_image Bad_Name example/annotated v1.0.0
 
 # The scaffold is deliberately incomplete: the licence is TODO and the start-up
 # test command is empty. check-image must flag exactly those two.

@@ -36,6 +36,8 @@ images/<name>/Containerfile     # hermetic build stage + parameterised, digest-p
 images/<name>/patches/*.patch   # optional dependency-only patches, each listed under deviations (ADR-002 rule 2)
 images/<name>/vex.openvex.json  # optional CVE exceptions (ADR-008)
 scripts/                        # one script per pipeline step; the same scripts run locally and in CI
+scripts/templates/              # what new-image.sh scaffolds from
+.claude/skills/                 # add-image and fix-cve procedures for Claude Code
 Makefile                        # make verify (checks on the repo), make image (build + check one image)
 tools.env                       # every tool image, pinned by digest; the only place a tool is pinned
 tests/                          # tests for the scripts and the checks
@@ -73,11 +75,18 @@ make test-hermetic           # prove a build step cannot reach the network
 On an Apple Silicon Mac, `make image` compiles under amd64 emulation and is very slow. CI takes about four minutes.
 
 ## Add an image
-1. Check the admission rules (ADR-002 rule 1).
-2. `scripts/new-image.sh <name> <owner/repo> <tag>`. This fills in the tag's commit.
-3. Edit `image.yaml` (licence, `test.command`, `build.prefetch`) and the Containerfile (`GO_TAG` to match upstream's `go.mod`, build path, labels, `/licenses`). Run `make verify` until it passes; it rejects the scaffold as generated.
-4. Open a PR. The pipeline builds and checks the image.
-5. For certification (story P.2, not automated yet): Partner Connect → product → Add component → Container image, **UBI**, **Red Hat Container Registry**. Put the component ID in `image.yaml`, submit the export questionnaire, and add the repo secrets.
+With Claude Code: `/add-image <name> <owner/repo> <tag>`. By hand, the same steps:
+
+1. **Admission** (ADR-002 rule 1). All four must hold: no Red Hat image we may ship, a permissive licence, a maintained upstream, and a Stakater product that deploys it.
+2. **Scaffold:** `scripts/new-image.sh <name> <owner/repo> <tag>`. It pins the tag's commit and writes `images/<name>/` from a template. Only Go upstreams have a template today.
+3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, start-up test command, Go version, main package path, labels, licence files.
+4. **`make verify`** until it passes. It rejects the scaffold as generated.
+5. **Open a PR.** CI builds the image offline, tests it, scans it and runs Red Hat's checks as a dry run. If the CVE gate fails, see `.claude/skills/fix-cve/SKILL.md`.
+6. **Human steps for certification:** create the Partner Connect component (Container image, **UBI**, **Red Hat Container Registry**), put its ID in `image.yaml`, submit the export questionnaire, add the repository secrets.
+7. **A factory-team member merges.** The merge publishes and submits for certification (story P.2; not live yet).
+8. **The consuming product pins the published digest** in its CSV `relatedImages`.
+
+The full procedure, with what each CI failure means, is in `.claude/skills/add-image/SKILL.md`.
 
 ## Consuming
 - **Operators:** CSV `relatedImages` + `RELATED_IMAGE_<NAME>`, by digest. Never upstream tags.
