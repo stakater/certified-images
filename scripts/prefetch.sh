@@ -31,7 +31,8 @@ PREFETCH=$("$ENGINE" run --rm -i "$YQ_IMAGE" '.build.prefetch // ""' <"$DIR/imag
 
 hermeto() { "$ENGINE" run --rm -v "$CTX:$CTX" -w "$CTX" "$HERMETO_IMAGE" "$@"; }
 
-hermeto fetch-deps --source ./src --output ./hermeto-output "$PREFETCH"
+# SPDX, to match the image SBOM (ADR-008 §1). Hermeto's default is CycloneDX.
+hermeto fetch-deps --source ./src --output ./hermeto-output --sbom-output-type spdx "$PREFETCH"
 hermeto generate-env ./hermeto-output -o ./hermeto.env --for-output-dir "$IN_BUILD_DIR"
 hermeto inject-files ./hermeto-output --for-output-dir "$IN_BUILD_DIR"
 

@@ -1,0 +1,48 @@
+# Builds and checks every image in images/ on pull requests, by calling the
+# reusable factory pipeline (ADR-006: this repo is its first caller).
+# No secrets, nothing published.
+name: images
+
+on:
+  pull_request:
+    paths:
+      - images/**
+      - scripts/**
+      - Makefile
+      - .github/workflows/images.yaml
+      - .github/workflows/build-certify.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  list:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      dirs: ${{ steps.list.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: List image directories
+        id: list
+        run: |
+          dirs=$(find images -mindepth 2 -maxdepth 2 -name image.yaml -exec dirname {} \; | sort | jq -R . | jq -cs .)
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+          echo "Images: $dirs"
+
+  image:
+    needs: list
+    if: ${{ needs.list.outputs.dirs != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.list.outputs.dirs) }}
+    uses: ./.github/workflows/build-certify.yaml
+    with:
+      image-dir: ${{ matrix.dir }}

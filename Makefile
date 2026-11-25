@@ -20,7 +20,8 @@ IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
 
 RUN = $(ENGINE) run --rm -v "$(CURDIR)":/work:ro -w /work
 
-.PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test
+.PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test \
+	build test-image scan preflight image
 
 verify: lint check-renovate check-images test ## run every check
 	@echo "verify: all checks passed"
@@ -48,3 +49,26 @@ check-images: ## our own rules for every images/<name>/ (scripts/check-image.sh)
 
 test: ## tests for the scripts, and a self-test that every check can fail
 	ENGINE=$(ENGINE) tests/run.sh
+
+# ---------------------------------------------------------------- one image
+# The same steps CI runs (.github/workflows/build-certify.yaml). Needs network
+# for the prefetch, the CVE database and preflight; the build itself has none.
+#   make image IMAGE=opencost
+IMAGE     ?= opencost
+IMAGE_DIR ?= images/$(IMAGE)
+CTX       ?= $(CURDIR)/.ctx/$(notdir $(IMAGE_DIR))
+REF       ?= localhost/stakater/$(notdir $(IMAGE_DIR)):build
+
+image: build test-image scan preflight ## build, test, scan and dry-run certify one image
+
+build: ## pinned source -> Hermeto prefetch -> offline build
+	ENGINE=$(ENGINE) CTX="$(CTX)" scripts/build-image.sh $(IMAGE_DIR)
+
+test-image: ## labels, /licenses, non-root, starts
+	ENGINE=$(ENGINE) scripts/test-image.sh $(REF) $(IMAGE_DIR)
+
+scan: ## SBOMs + CVE gate (fixable CRITICAL and HIGH)
+	ENGINE=$(ENGINE) scripts/scan-image.sh $(REF) $(IMAGE_DIR) "$(CTX)"
+
+preflight: ## Red Hat certification checks, dry run, nothing submitted
+	ENGINE=$(ENGINE) scripts/preflight-dry-run.sh $(REF) "$(CTX)"
