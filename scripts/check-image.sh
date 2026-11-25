@@ -127,5 +127,22 @@ if ! printf '%s' "$JSON" | jq -e '(.test.command // []) | type == "array" and le
   err 11 "test.command must be a non-empty list of arguments that make the image exit 0 (e.g. [\"--help\"])"
 fi
 
+# rule 12: every patch is a recorded deviation, and every recorded deviation
+# has its patch (ADR-002 rule 2). A deviation exists only to fix a
+# vulnerability, so it must name what it fixes.
+listed=$(printf '%s' "$JSON" | jq -r '(.deviations // [])[] | .patch // ""')
+shopt -s nullglob
+for patch in "$DIR"/patches/*.patch; do
+  rel="patches/$(basename "$patch")"
+  printf '%s\n' "$listed" | grep -qxF "$rel" || err 12 "$rel is not listed under deviations in image.yaml (ADR-002 rule 2)"
+done
+shopt -u nullglob
+while IFS= read -r rel; do
+  [ -z "$rel" ] && continue
+  [ -f "$DIR/$rel" ] || err 12 "deviation lists $rel, but that file does not exist"
+done <<<"$listed"
+bad=$(printf '%s' "$JSON" | jq -r '(.deviations // [])[] | select(((.reason // "") == "") or (((.fixes // []) | length) == 0)) | .patch // "(no patch)"')
+[ -z "$bad" ] || err 12 "deviation $(echo "$bad" | tr '\n' ' ')needs a reason and a non-empty fixes list of vulnerability IDs"
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

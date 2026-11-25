@@ -99,6 +99,22 @@ dir=$(mutate from-stage-alias Containerfile 's#^COPY --from=build /out /out#COPY
 printf 'FROM build AS again\nFROM scratch\nCOPY --from=again /out /out\n' >>"$dir/Containerfile"
 expect_pass "check-image: FROM <earlier stage> and FROM scratch need no digest" scripts/check-image.sh "$dir"
 
+# rule 12: patches and image.yaml deviations must list each other
+dir=$(mutate patch-unlisted image.yaml 's/^consumers: \[\]/consumers: []/')
+mkdir -p "$dir/patches" && : >"$dir/patches/0001-x.patch"
+expect_fail "check-image: a patch not listed in deviations fails rule 12" "rule 12:.*0001-x.patch" scripts/check-image.sh "$dir"
+dir=$(mutate patch-listed image.yaml 's/^consumers: \[\]/consumers: []/')
+mkdir -p "$dir/patches" && : >"$dir/patches/0001-x.patch"
+printf 'deviations:\n  - patch: patches/0001-x.patch\n    reason: fixes a HIGH vulnerability upstream has not fixed\n    fixes: [CVE-0000-00001]\n    upstreamPR: none yet\n' >>"$dir/image.yaml"
+expect_pass "check-image: a listed patch with reason and fixes passes" scripts/check-image.sh "$dir"
+dir=$(mutate patch-missing image.yaml 's/^consumers: \[\]/consumers: []/')
+printf 'deviations:\n  - patch: patches/0009-gone.patch\n    reason: x\n    fixes: [CVE-0000-00001]\n' >>"$dir/image.yaml"
+expect_fail "check-image: a deviation whose patch file is missing fails rule 12" "rule 12:.*0009-gone.patch" scripts/check-image.sh "$dir"
+dir=$(mutate patch-no-fixes image.yaml 's/^consumers: \[\]/consumers: []/')
+mkdir -p "$dir/patches" && : >"$dir/patches/0001-x.patch"
+printf 'deviations:\n  - patch: patches/0001-x.patch\n    reason: because\n' >>"$dir/image.yaml"
+expect_fail "check-image: a deviation that names no vulnerability fails rule 12" "rule 12:.*fixes" scripts/check-image.sh "$dir"
+
 expect_fail "check-image: missing directory fails" "" scripts/check-image.sh "$TMP/does-not-exist"
 
 # ----------------------------------------------------------- new-image.sh

@@ -20,6 +20,20 @@ build:
   # Hermeto prefetch input (ADR-003). Typed fetchers only.
   prefetch: '{"type": "gomod", "path": "."}'
 
+# Deviations from upstream (ADR-002 rule 2): dependency bumps that fix a
+# vulnerability in the patch SLA. Remove each one when upstream ships the fix.
+deviations:
+  - patch: patches/0001-bump-vulnerable-go-modules.patch
+    reason: >-
+      Four fixable HIGH vulnerabilities in Go modules. Not fixed in upstream
+      v1.121.5 or on upstream's develop branch (checked 2026-11-25).
+    fixes: [CVE-2026-116587, CVE-2026-63209, CVE-2026-78661, CVE-2026-78669]
+    bumps:
+      - github.com/go-jose/go-jose/v4 v4.1.4 -> v4.1.6
+      - github.com/klauspost/compress v1.18.4 -> v1.18.7
+      - golang.org/x/net v0.59.0 -> v0.62.0
+    upstreamPR: none yet   # ADR-002 rule 2 says offer it upstream; a person does that
+
 test:
   # Start-up test: the image must exit 0 when run with these arguments.
   command: ["--help"]
