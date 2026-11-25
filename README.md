@@ -36,6 +36,174 @@ Images:
 
 How we work: [docs/method.md](docs/method.md).
 
+## How it works
+
+### The pieces
+
+```mermaid
+flowchart LR
+  subgraph repo["this repository"]
+    IMG["images/NAME/<br/>image.yaml, Containerfile,<br/>patches, VEX"]
+    SCR["scripts/<br/>one script per step"]
+    TOOLS["tools.env<br/>tool images by digest"]
+    WF["workflows<br/>verify, images, publish,<br/>build-certify"]
+    REN["renovate.json"]
+  end
+  UP["Upstream project<br/>on GitHub"]
+  UBI["Red Hat UBI<br/>base image"]
+  RH["Red Hat partner registry<br/>and Partner Connect"]
+  SIG["Sigstore<br/>signature log"]
+  PROD["Stakater product<br/>MTO, SCO, Reloader"]
+  CUST["Customer cluster<br/>often air-gapped"]
+
+  UP -->|pinned commit| WF
+  UBI -->|pinned digest| WF
+  IMG --> WF
+  SCR --> WF
+  TOOLS --> SCR
+  REN -.->|opens bump PRs| IMG
+  REN -.->|opens bump PRs| TOOLS
+  WF -->|push, submit| RH
+  WF -->|sign, attest| SIG
+  RH -->|certified image by digest| PROD
+  PROD -->|mirrored by digest| CUST
+```
+
+Each image is data in `images/NAME/`. The pipeline is the same for every image: workflows call scripts, and scripts run tools from pinned container images.
+
+### Life of an image, end to end
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Dev as Contributor
+  actor Team as Factory team
+  participant GH as GitHub PR
+  participant CI as Pipeline
+  participant RH as Red Hat registry and Partner Connect
+  participant Prod as Stakater product
+  participant Cust as Customer cluster
+
+  Dev->>Dev: Check admission, ADR-002 rule 1
+  Dev->>GH: PR adding images/NAME (scaffold, fill in TODOs)
+  GH->>CI: Build and check, nothing published
+  CI-->>GH: Build, image test, CVE gate, preflight dry run
+  Team->>RH: Create component, export questionnaire
+  Team->>GH: Add secrets, set component ID in image.yaml
+  Team->>GH: Review and merge
+  GH->>CI: Publish run on main
+  CI->>RH: Push, sign, attest, submit
+  RH-->>RH: Certify and publish to the catalog
+  Prod->>RH: Reference the image by digest in relatedImages
+  Cust->>RH: Mirror the digest, install the product
+```
+
+### What a pull request runs
+
+Nothing here needs a secret, and nothing leaves the runner except downloads.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant WF as build-certify workflow
+  participant UP as Upstream repo
+  participant HE as Hermeto
+  participant BLD as Container build
+  participant IMG as Built image
+  participant SC as syft and trivy
+  participant PF as preflight
+  participant LR as Local throwaway registry
+
+  WF->>WF: check-image.sh, the image.yaml and Containerfile rules
+  WF->>UP: fetch-source.sh fetches the pinned commit
+  UP-->>WF: Source. Fails if the tag points elsewhere
+  WF->>WF: Apply patches, dependency files only
+  WF->>HE: prefetch.sh, the only networked build step
+  HE-->>WF: Dependencies and their SBOM
+  WF->>BLD: build-image.sh with the network off
+  BLD-->>IMG: linux/amd64 image
+  WF->>IMG: test-image.sh checks labels, licences, non-root, starts
+  WF->>SC: scan-image.sh
+  SC-->>WF: Image SBOM. Fails on fixable CRITICAL or HIGH
+  WF->>LR: Push a copy for the dry run
+  WF->>PF: preflight-dry-run.sh, Red Hat's checks, nothing submitted
+  PF-->>WF: Pass or fail per check
+  WF->>LR: publish-rehearsal.sh, release 1 then release 2
+```
+
+### What a merge to main runs
+
+The same job as above, with these steps added. It publishes only an image whose component ID is set.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant PUB as publish workflow
+  participant WF as build-certify workflow
+  participant Q as quay.io partner registry
+  participant SIG as Sigstore
+  participant GHA as GitHub attestations
+  participant PC as Partner Connect
+  participant CAT as Red Hat catalog
+
+  PUB->>PUB: changed-images.sh, which images did the merge touch
+  PUB->>WF: Call with publish true, for each image
+  WF->>WF: publish-plan.sh, is the component ID set
+  alt no component ID
+    WF-->>PUB: Build and check only, report not published
+  else component ID set
+    WF->>Q: Log in with the image's registry secrets
+    WF->>Q: list-tags.sh
+    Q-->>WF: Existing tags
+    WF->>WF: next-release.sh gives VERSION-N
+    WF->>WF: Build with that release, then every PR check
+    WF->>Q: push-image.sh
+    Q-->>WF: Digest
+    WF->>SIG: cosign sign the digest, keyless
+    WF->>Q: cosign attest both SBOMs
+    WF->>GHA: Build provenance for the digest
+    WF->>PC: preflight-submit.sh with the API key
+    PC-->>CAT: Certified image published
+  end
+```
+
+### How an image stays current
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant REN as Renovate
+  participant GH as GitHub PR
+  participant CI as Pipeline
+  actor Team as Factory team
+  participant RH as Red Hat registry
+
+  Note over REN,RH: New UBI base digest, usually an OS security fix
+  REN->>GH: PR bumping BASE_TAG
+  GH->>CI: Full PR checks
+  CI-->>GH: Green
+  GH->>GH: Automerge, the one exception to review
+  GH->>CI: Publish run
+  CI->>RH: Same version, next release number
+
+  Note over REN,RH: New upstream release
+  REN->>GH: PR bumping version and commit
+  GH->>CI: Full PR checks
+  Team->>GH: Review, re-check admission, drop obsolete patches
+  Team->>GH: Merge
+  GH->>CI: Publish run
+  CI->>RH: New version, release 1
+
+  Note over REN,RH: Vulnerability upstream has not fixed
+  CI-->>GH: CVE gate fails
+  Team->>GH: Dependency-only patch recorded as a deviation, or a VEX exception
+  Team->>GH: Review and merge
+  GH->>CI: Publish run
+  CI->>RH: Same version, next release number
+```
+
+⚠️ Renovate and the automerge have not run on this repository yet; the last diagram shows the design. A scheduled re-scan of already published images is planned and not built (ADR-002 rule 4).
+
 ## Layout
 ```
 images/<name>/image.yaml        # kind, upstream repo+tag+commit, prefetch input, deviations, test command, Partner Connect ID
@@ -78,15 +246,16 @@ On a merge to `main` that touches an image (`publish.yaml`), the same job contin
 
 An image without a component ID is built and checked on `main` but not published; the run says so. To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
 
-### Secrets the publish path needs
-Named from `redhat.secretSuffix` in `image.yaml` (for `opencost`: `OPENCOST`). A repository admin adds them; nobody pastes their values anywhere else.
+### Setup and secrets
+The publish path needs three repository secrets per image, named from `redhat.secretSuffix` in `image.yaml`:
 
 | Secret | What |
 |---|---|
-| `RH_REGISTRY_USER_<SUFFIX>`, `RH_REGISTRY_PASSWORD_<SUFFIX>` | The component's registry robot account, from Partner Connect |
+| `RH_REGISTRY_USER_<SUFFIX>` | The component's registry robot account, from Partner Connect |
+| `RH_REGISTRY_PASSWORD_<SUFFIX>` | That account's registry key |
 | `RH_PYXIS_TOKEN_<SUFFIX>`, or one shared `RH_PYXIS_TOKEN` | Partner Connect API key for submitting results |
 
-Recommended: put the publish job behind a GitHub environment with required reviewers, so a merge alone does not publish.
+**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: create the component, add the secrets, then merge the PR that sets the component ID. That merge is the publish.
 
 ## Run it locally
 You need docker or podman, `make`, `git` and `jq`. Every other tool runs from a container image pinned by digest.

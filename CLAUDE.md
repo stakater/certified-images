@@ -39,6 +39,8 @@ status, image names or version numbers here; they go stale.
 | Which stories are approved, in progress, done | `docs/roadmap.md` |
 | What an image is pinned to, and its deviations | `images/<name>/image.yaml` |
 | What is still unverified | ⚠️ marks in `docs/`, and `README.md` |
+| How the pieces fit together (diagrams) | `README.md`, "How it works" |
+| What a person must set up, and the secrets | `docs/setup.md` |
 
 ## Read first
 
