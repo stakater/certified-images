@@ -1,0 +1,36 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/stakater/certified-images/images/EXAMPLE/vex",
+  "author": "Stakater certified-images maintainers",
+  "timestamp": "2026-11-25T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-0000-00001"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/EXAMPLE?tag=v1.2.3-1"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Explain why, with evidence (call graph, build flag, config). Applies to upstream v1.2.3 only; re-validate on every upstream bump (ADR-008 \u00a76).",
+      "x-stakater-owner": "name@stakater.com"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-0000-00002"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/EXAMPLE?tag=v1.2.3-1"
+        }
+      ],
+      "status": "under_investigation",
+      "x-stakater-expires": "2026-12-25T00:00:00Z",
+      "x-stakater-owner": "name@stakater.com"
+    }
+  ]
+}

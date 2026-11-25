@@ -1,0 +1,32 @@
+# One file per artifact (schema modelled on Iron Bank's hardening_manifest.yaml).
+# Renovate bumps upstream.version + upstream.commit together; CI reads the rest.
+kind: container            # container | xpkg  (ADR-005)
+name: opencost
+displayName: Stakater build of OpenCost
+summary: OpenCost cost model rebuilt from source on Red Hat UBI
+description: >-
+  OpenCost cost-allocation engine for Kubernetes, rebuilt by Stakater from the
+  upstream source on Red Hat Universal Base Image and certified for OpenShift.
+  Used by Multi-Tenant Operator FinOps/showback.
+
+upstream:
+  repo: https://github.com/opencost/opencost
+  # renovate: datasource=github-tags depName=opencost/opencost
+  version: v1.121.5
+  commit: 32dbf049c84c66db1efeb9fc9a98e5042f076cf1   # tag must dereference to this (ADR-003)
+  license: Apache-2.0
+
+build:
+  goVersion: "1.27.3"        # from upstream go.mod; bump together with upstream
+  # Hermeto prefetch input (ADR-003). Typed fetchers only.
+  prefetch: '{"type": "gomod", "path": "."}'
+
+redhat:
+  # Partner Connect container component (fill after creating the component)
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+  # Push target: quay.io/redhat-isv-containers/<componentId>
+  # Secrets: RH_PYXIS_TOKEN_OPENCOST, RH_REGISTRY_USER_OPENCOST, RH_REGISTRY_PASSWORD_OPENCOST
+  secretSuffix: OPENCOST
+
+consumers:
+  - multi-tenant-operator   # CSV relatedImages + RELATED_IMAGE_OPENCOST, by digest
