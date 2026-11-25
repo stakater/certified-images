@@ -5,6 +5,7 @@
 # pinned source -> Hermeto prefetch -> build with the network off.
 # Prints the local image reference on stdout; everything else goes to stderr.
 # CTX overrides the build context directory (default .ctx/<name>).
+# RELEASE sets the image's release label (default 0: not a published build).
 set -euo pipefail
 
 # shellcheck source=scripts/lib.sh
@@ -26,5 +27,5 @@ mkdir -p "$CTX"
 "$ROOT/scripts/prefetch.sh" "$DIR" "$CTX"
 cp "$DIR/Containerfile" "$CTX/Containerfile"
 
-"$ENGINE" build --network=none --platform "$PLATFORM" -f "$CTX/Containerfile" -t "$REF" "$CTX" >&2
+"$ENGINE" build --network=none --platform "$PLATFORM" --build-arg "RELEASE=${RELEASE:-0}" -f "$CTX/Containerfile" -t "$REF" "$CTX" >&2
 echo "$REF"

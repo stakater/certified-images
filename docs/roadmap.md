@@ -64,6 +64,12 @@ SBOM and provenance, so that MTO can reference it by digest.*
   certified in Red Hat's catalog; the README's verify commands succeed against
   the **public pull spec** from a machine outside CI (ADR-008 open question 1);
   the provenance level we claim is recorded (ADR-007).
+- **State:** ready for first publish. The publish path is written; release
+  numbering and push are rehearsed in CI against a local registry. Login,
+  signing, attestations and submission have never run. Waiting on a person:
+  the Partner Connect component and its ID, the export questionnaire, the
+  repository secrets, then the merge that sets the ID, then verification from
+  outside CI.
 
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
@@ -76,7 +82,6 @@ mirror, so that showback works without internet access.*
 ## Backlog (one line each, all 📝 Draft)
 
 - Scheduled daily re-scan of published digests (ADR-002 rule 4) and the first outer audit (method.md).
-- `<upstream-version>-<release>` tagging with an automatic release counter (ADR-002 rule 3).
 - Offer OpenCost's dependency bump upstream and record the PR link in `image.yaml` (ADR-002 rule 2).
 - Dex as the second third-party image.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).

@@ -9,7 +9,7 @@ ENGINE ?= docker
 # Tool images are pinned in tools.env, the one place Renovate maintains.
 include tools.env
 export HADOLINT_IMAGE SHELLCHECK_IMAGE ACTIONLINT_IMAGE RENOVATE_IMAGE YQ_IMAGE \
-	HERMETO_IMAGE SYFT_IMAGE TRIVY_IMAGE PREFLIGHT_IMAGE REGISTRY_IMAGE
+	HERMETO_IMAGE SYFT_IMAGE TRIVY_IMAGE PREFLIGHT_IMAGE REGISTRY_IMAGE SKOPEO_IMAGE
 
 # What each target checks. Tests override these to point at broken fixtures.
 CONTAINERFILES  ?= $(wildcard images/*/Containerfile)
@@ -21,7 +21,7 @@ IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
 RUN = $(ENGINE) run --rm -v "$(CURDIR)":/work:ro -w /work
 
 .PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test \
-	build test-image scan preflight image test-hermetic
+	build test-image scan preflight image test-hermetic publish-rehearsal
 
 verify: lint check-renovate check-images test ## run every check
 	@echo "verify: all checks passed"
@@ -58,20 +58,26 @@ IMAGE     ?= opencost
 IMAGE_DIR ?= images/$(IMAGE)
 CTX       ?= $(CURDIR)/.ctx/$(notdir $(IMAGE_DIR))
 REF       ?= localhost/stakater/$(notdir $(IMAGE_DIR)):build
+# Release number baked into the image label (ADR-002 rule 3). The publish
+# workflow computes it from the registry; local and PR builds use 0.
+RELEASE   ?= 0
 
 image: build test-image scan preflight ## build, test, scan and dry-run certify one image
 
 build: ## pinned source -> Hermeto prefetch -> offline build
-	ENGINE=$(ENGINE) CTX="$(CTX)" scripts/build-image.sh $(IMAGE_DIR)
+	ENGINE=$(ENGINE) CTX="$(CTX)" RELEASE="$(RELEASE)" scripts/build-image.sh $(IMAGE_DIR)
 
 test-image: ## labels, /licenses, non-root, starts
-	ENGINE=$(ENGINE) scripts/test-image.sh $(REF) $(IMAGE_DIR)
+	ENGINE=$(ENGINE) RELEASE="$(RELEASE)" scripts/test-image.sh $(REF) $(IMAGE_DIR)
 
 scan: ## SBOMs + CVE gate (fixable CRITICAL and HIGH)
 	ENGINE=$(ENGINE) scripts/scan-image.sh $(REF) $(IMAGE_DIR) "$(CTX)"
 
 test-hermetic: ## prove a build step cannot reach the network
 	ENGINE=$(ENGINE) scripts/test-hermetic.sh
+
+publish-rehearsal: ## release numbering and push against a throwaway local registry
+	ENGINE=$(ENGINE) scripts/publish-rehearsal.sh $(REF) $(IMAGE_DIR)
 
 preflight: ## Red Hat certification checks, dry run, nothing submitted
 	ENGINE=$(ENGINE) scripts/preflight-dry-run.sh $(REF) "$(CTX)"

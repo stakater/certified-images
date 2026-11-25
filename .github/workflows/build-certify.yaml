@@ -1,12 +1,17 @@
 # The factory pipeline, as a reusable workflow (ADR-006).
 #
-# Today it only builds and checks (story P.1): pinned source -> Hermeto
-# prefetch -> offline build -> start-up test -> SBOMs + CVE gate -> preflight
-# dry run. It needs no secrets and publishes nothing. Push, signing and
-# `preflight --submit` arrive with story P.2 behind the `publish` input.
+# Always: pinned source -> Hermeto prefetch -> offline build -> start-up test ->
+# SBOMs + CVE gate -> preflight dry run.
+# With publish=true, and only for an image that has a Partner Connect component
+# ID: push to Red Hat's partner registry -> cosign signature -> SBOM and
+# provenance attestations -> preflight --submit.
 #
+# One job on purpose: the image that was tested is the image that is pushed.
 # Every step is a script or make target, so `make image IMAGE=<name>` runs the
-# same thing on a laptop (ADR-007: nothing here is GitHub-specific).
+# build half on a laptop (ADR-007).
+#
+# No `permissions` block: the caller decides what a run may do. Pull-request
+# callers grant read only. The publish caller adds id-token and attestations.
 name: build-certify
 
 on:
@@ -17,37 +22,79 @@ on:
         required: true
         type: string
       publish:
-        description: Push, sign and submit for certification. Not implemented yet (story P.2).
+        description: Push, sign, attest and submit for certification. Needs the image's secrets.
         required: false
         type: boolean
         default: false
-
-permissions:
-  contents: read
 
 jobs:
   build:
     name: ${{ inputs.image-dir }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # Two publishes of one image must not race for the same release number.
+    concurrency:
+      group: ${{ inputs.publish && 'publish' || github.ref }}-${{ inputs.image-dir }}
+      cancel-in-progress: false
     env:
       IMAGE_DIR: ${{ inputs.image-dir }}
     steps:
-      - name: Refuse to publish
-        if: ${{ inputs.publish }}
-        run: |
-          echo "::error::publish=true is not implemented. Story P.2 adds push, signing and submission."
-          exit 1
-
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
+      - name: Plan
+        id: plan
+        run: scripts/publish-plan.sh "$IMAGE_DIR" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Decide whether this run publishes
+        id: mode
+        env:
+          WANT_PUBLISH: ${{ inputs.publish }}
+          PUBLISHABLE: ${{ steps.plan.outputs.publishable }}
+          REASON: ${{ steps.plan.outputs.reason }}
+        run: |
+          publish=false
+          if [ "$WANT_PUBLISH" = "true" ] && [ "$PUBLISHABLE" = "true" ]; then publish=true; fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$WANT_PUBLISH" = "true" ] && [ "$publish" = "false" ]; then
+            echo "::warning title=Not published::$IMAGE_DIR was built and checked but not published: $REASON"
+            echo "### $IMAGE_DIR: built and checked, **not published**" >> "$GITHUB_STEP_SUMMARY"
+            echo "$REASON" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Log in to Red Hat's partner registry
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: quay.io
+          username: ${{ secrets[format('RH_REGISTRY_USER_{0}', steps.plan.outputs.suffix)] }}
+          password: ${{ secrets[format('RH_REGISTRY_PASSWORD_{0}', steps.plan.outputs.suffix)] }}
+
+      - name: Release number
+        id: release
+        env:
+          PUBLISH: ${{ steps.mode.outputs.publish }}
+          REPOSITORY: ${{ steps.plan.outputs.repository }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          release=0
+          if [ "$PUBLISH" = "true" ]; then
+            release=$(scripts/list-tags.sh "$REPOSITORY" | scripts/next-release.sh "$VERSION")
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "tag=$VERSION-$release" >> "$GITHUB_OUTPUT"
+          echo "Release: $release"
+
       - name: Build (pinned source, prefetch, network off)
-        run: make build IMAGE_DIR="$IMAGE_DIR"
+        env:
+          RELEASE: ${{ steps.release.outputs.release }}
+        run: make build IMAGE_DIR="$IMAGE_DIR" RELEASE="$RELEASE"
 
       - name: Test the image
-        run: make test-image IMAGE_DIR="$IMAGE_DIR"
+        env:
+          RELEASE: ${{ steps.release.outputs.release }}
+        run: make test-image IMAGE_DIR="$IMAGE_DIR" RELEASE="$RELEASE"
 
       - name: SBOMs and CVE gate
         run: make scan IMAGE_DIR="$IMAGE_DIR"
@@ -55,6 +102,70 @@ jobs:
       - name: Certification dry run (preflight)
         run: make preflight IMAGE_DIR="$IMAGE_DIR"
 
+      - name: Publish rehearsal (local registry, no credentials)
+        if: ${{ steps.mode.outputs.publish != 'true' }}
+        run: make publish-rehearsal IMAGE_DIR="$IMAGE_DIR"
+
+      # ------------------------------------------------------------ publish
+      # Everything below is outward-facing and runs only when publishing.
+
+      - name: Push
+        id: push
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        env:
+          REPOSITORY: ${{ steps.plan.outputs.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          ref=$(scripts/push-image.sh "localhost/stakater/$(basename "$IMAGE_DIR"):build" "$REPOSITORY" "$TAG")
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+
+      - name: Sign the digest and attest the SBOMs
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        env:
+          REF: ${{ steps.push.outputs.ref }}
+        run: |
+          evidence=".ctx/$(basename "$IMAGE_DIR")/evidence"
+          cosign sign --yes "$REF"
+          cosign attest --yes --type spdxjson --predicate "$evidence/sbom.image.spdx.json" "$REF"
+          cosign attest --yes --type spdxjson --predicate "$evidence/sbom.deps.spdx.json" "$REF"
+
+      - name: Attest build provenance
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.plan.outputs.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Submit to Red Hat for certification
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        env:
+          PFLT_PYXIS_API_TOKEN: ${{ secrets[format('RH_PYXIS_TOKEN_{0}', steps.plan.outputs.suffix)] || secrets.RH_PYXIS_TOKEN }}
+          REPOSITORY: ${{ steps.plan.outputs.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+          COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
+        run: scripts/preflight-submit.sh "$REPOSITORY:$TAG" "$COMPONENT_ID"
+
+      - name: Summary
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        env:
+          REF: ${{ steps.push.outputs.ref }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          {
+            echo "### $IMAGE_DIR published as \`$TAG\`"
+            echo
+            echo "Pushed, signed, attested and submitted: \`$REF\`"
+            echo
+            echo "Consumers pin the digest, never the tag."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ----------------------------------------------------------- evidence
       - name: Evidence file name
         id: evidence
         if: ${{ !cancelled() }}

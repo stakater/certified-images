@@ -1,0 +1,74 @@
+# Publishes images: push to Red Hat's partner registry, sign, attest, submit
+# for certification. OUTWARD-FACING.
+#
+# Runs when a merge to main touches an image, for the images it touched. Run it
+# by hand for one image when the pipeline itself changed and the image needs a
+# new release (ADR-002 rule 3).
+#
+# An image without a Partner Connect component ID is built and checked but not
+# published; the run says so.
+name: publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - images/**
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image name (the directory under images/), e.g. opencost
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  changed:
+    name: which images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      dirs: ${{ steps.list.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: List images to publish
+        id: list
+        env:
+          EVENT: ${{ github.event_name }}
+          IMAGE: ${{ inputs.image }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if ! [[ "$IMAGE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || [ ! -f "images/$IMAGE/image.yaml" ]; then
+              echo "::error::No such image: $IMAGE"
+              exit 1
+            fi
+            dirs=$(jq -cn --arg d "images/$IMAGE" '[$d]')
+          else
+            dirs=$(scripts/changed-images.sh "$BEFORE" "$AFTER")
+          fi
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+          echo "Images: $dirs"
+
+  publish:
+    needs: changed
+    if: ${{ needs.changed.outputs.dirs != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.changed.outputs.dirs) }}
+    permissions:
+      contents: read
+      id-token: write # keyless signing and provenance
+      attestations: write # build provenance
+    uses: ./.github/workflows/build-certify.yaml
+    with:
+      image-dir: ${{ matrix.dir }}
+      publish: true
+    secrets: inherit

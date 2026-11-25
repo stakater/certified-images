@@ -106,9 +106,11 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 
 ## Boundaries
 
-- **Merging to `main` publishes.** Once the publish workflow has its
-  credentials, a merge that touches an image pushes it to Red Hat's registry and
-  submits it for certification. Never merge, push to `main`, or trigger a
+- **Merging to `main` publishes.** A merge that touches an image whose
+  Partner Connect component ID is set pushes it to Red Hat's registry, signs it
+  and submits it for certification (`publish.yaml`). Setting a component ID in
+  `image.yaml` is therefore the act that makes an image publishable; never do
+  it without being asked. Never merge, push to `main`, or trigger a
   publish without explicit authorization. Work on a feature branch and open a PR.
 - **Secrets by reference only.** Partner Connect and registry credentials are
   GitHub secrets named from `image.yaml` (`redhat.secretSuffix`). Never read,
@@ -130,7 +132,7 @@ levels need a build, so they run in CI and locally with `make image IMAGE=<name>
 | Static | Containerfile lint, shell lint, `image.yaml` rules, Renovate config, workflow lint | hadolint, shellcheck, `scripts/check-image.sh`, `renovate-config-validator`, actionlint |
 | Unit | Scripts and check logic against fixtures; every check is shown to fail on a broken input | `tests/run.sh` (plain bash) |
 | Image | The built image has the required labels, `/licenses`, non-root user, and starts as an arbitrary UID | `scripts/test-image.sh`, `scripts/preflight-dry-run.sh` |
-| End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight; a separate job proves builds cannot reach the network | `build-certify.yaml`, `make test-hermetic` |
+| End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight → publish rehearsal against a local registry; a separate job proves builds cannot reach the network | `build-certify.yaml`, `make test-hermetic` |
 
 Rules for working with it:
 
@@ -178,10 +180,16 @@ scripts/test-image.sh          labels, /licenses, non-root, starts
 scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
 scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
+scripts/publish-plan.sh        is this image publishable, and to which repository
+scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
+scripts/push-image.sh          pushes and prints the digest reference
+scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
+scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
+scripts/changed-images.sh      which images a merge touched
 scripts/lib.sh, tools.env      shared: container engine, and every tool image pinned by digest
 Makefile                       make verify (repo checks), make image (one image)
 tests/run.sh, tests/fixtures/  tests for the scripts and the checks
-.github/workflows/             verify.yaml, images.yaml (PR builds), build-certify.yaml (the reusable pipeline)
+.github/workflows/             verify.yaml, images.yaml (PR builds), publish.yaml (merges to main), build-certify.yaml (the reusable pipeline both call)
 renovate.json                  keeps upstream versions, base digests and tool images current
 .claude/                       the verify hook and the skills above
 docs/                          vision, method, roadmap, planning docs, ADRs, references
