@@ -11,6 +11,7 @@ on:
       - Makefile
       - .github/workflows/images.yaml
       - .github/workflows/build-certify.yaml
+      - tests/fixtures/network/**
 
 permissions:
   contents: read
@@ -35,6 +36,16 @@ jobs:
           dirs=$(find images -mindepth 2 -maxdepth 2 -name image.yaml -exec dirname {} \; | sort | jq -R . | jq -cs .)
           echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
           echo "Images: $dirs"
+
+  hermetic:
+    name: builds cannot reach the network
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - run: make test-hermetic
 
   image:
     needs: list

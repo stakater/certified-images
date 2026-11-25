@@ -58,7 +58,10 @@ jobs:
       - name: Evidence file name
         id: evidence
         if: ${{ !cancelled() }}
-        run: echo "name=evidence-$(basename "$IMAGE_DIR")" >> "$GITHUB_OUTPUT"
+        run: |
+          # Files written by the tool containers belong to root; make them readable.
+          sudo chown -R "$(id -u):$(id -g)" .ctx 2>/dev/null || true
+          echo "name=evidence-$(basename "$IMAGE_DIR")" >> "$GITHUB_OUTPUT"
 
       - name: Upload evidence
         if: ${{ !cancelled() }}

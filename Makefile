@@ -21,7 +21,7 @@ IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
 RUN = $(ENGINE) run --rm -v "$(CURDIR)":/work:ro -w /work
 
 .PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test \
-	build test-image scan preflight image
+	build test-image scan preflight image test-hermetic
 
 verify: lint check-renovate check-images test ## run every check
 	@echo "verify: all checks passed"
@@ -69,6 +69,9 @@ test-image: ## labels, /licenses, non-root, starts
 
 scan: ## SBOMs + CVE gate (fixable CRITICAL and HIGH)
 	ENGINE=$(ENGINE) scripts/scan-image.sh $(REF) $(IMAGE_DIR) "$(CTX)"
+
+test-hermetic: ## prove a build step cannot reach the network
+	ENGINE=$(ENGINE) scripts/test-hermetic.sh
 
 preflight: ## Red Hat certification checks, dry run, nothing submitted
 	ENGINE=$(ENGINE) scripts/preflight-dry-run.sh $(REF) "$(CTX)"

@@ -52,7 +52,8 @@ what CI runs.
 | `scripts/scan-image.sh <ref> <images/name>` | syft SBOM (SPDX JSON); trivy with `--ignore-unfixed --severity CRITICAL,HIGH` and the VEX file |
 | `.github/workflows/build-certify.yaml` | reusable workflow; inputs `image-dir`, `publish` (default `false`; `true` is rejected until P.2). Jobs: verify → build → test → scan → preflight dry run |
 | `.github/workflows/images.yaml` | caller: on pull requests touching `images/**`, `scripts/**` or the workflow, one run per image directory |
-| `.github/CODEOWNERS` | `images/**` and `.github/**` owned by the factory team (human step below) |
+| `.github/CODEOWNERS` | `images/**` and `.github/**` owned by the factory team. **Not written**: it needs a GitHub handle (human step below) |
+| `scripts/preflight-dry-run.sh`, `scripts/test-hermetic.sh` | added during the story: preflight needs a registry, and the network-isolation proof needs a control build |
 | `Makefile` | `build`, `test-image`, `scan`; tool images (Hermeto, syft, trivy, preflight) pinned by digest next to the linters |
 
 Changes to existing files:
@@ -107,9 +108,12 @@ Checks that need a container build, run by `make build` and in CI, not in
 ## Out of scope
 
 - Push, cosign, attestations, `preflight --submit`, Partner Connect: P.2.
-- `<version>-<release>` tagging, the `deviations` field, the daily re-scan:
-  backlog stories. No patch exists yet, so `fetch-source.sh` implements patch
-  application and its scope check, but `image.yaml` does not list deviations.
+- `<version>-<release>` tagging and the daily re-scan: backlog stories.
+- **Scope change during the story:** the `deviations` field was planned as a
+  backlog story. The CVE gate's first run found four fixable HIGH
+  vulnerabilities that upstream has not fixed, so the first patch and the
+  `deviations` field (with `check-image.sh` rule 12) were pulled into P.1.
+  Without them the PR run could not go green honestly.
 - arm64.
 
 ## Known unknowns to resolve inside this story

@@ -16,65 +16,84 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | [007](docs/adr/ADR-007-build-platform.md) | GitHub Actions; Konflux re-evaluated when a trigger fires |
 | [008](docs/adr/ADR-008-supply-chain-evidence.md) | SBOMs, cosign, provenance, CVE gate + daily re-scan, OpenVEX exceptions |
 
+## Status
+**Pull requests build and check OpenCost end to end. Nothing is published or certified yet.**
+
+| Stage | State |
+|---|---|
+| Checks on the repo itself (`make verify`) | Runs on every PR |
+| Pinned source → Hermeto prefetch → offline build | Runs on every PR; OpenCost v1.121.5 builds |
+| Start-up test, SBOMs, CVE gate, preflight dry run | Runs on every PR; OpenCost passes all of them |
+| Push, signing, attestations, `preflight --submit` | Not written. Story P.2 in [docs/roadmap.md](docs/roadmap.md) |
+| `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
+
+How we work: [docs/method.md](docs/method.md).
+
 ## Layout
 ```
-images/<name>/image.yaml        # kind, upstream repo+tag+commit, prefetch input, Partner Connect ID
-images/<name>/Containerfile     # hermetic build stage + parameterised UBI runtime stage
+images/<name>/image.yaml        # kind, upstream repo+tag+commit, prefetch input, deviations, test command, Partner Connect ID
+images/<name>/Containerfile     # hermetic build stage + parameterised, digest-pinned UBI runtime stage
+images/<name>/patches/*.patch   # optional dependency-only patches, each listed under deviations (ADR-002 rule 2)
 images/<name>/vex.openvex.json  # optional CVE exceptions (ADR-008)
-images/<name>/patches/*.patch   # optional dependency-only patches (ADR-003 §6)
-.github/workflows/build-certify.yaml
-.github/CODEOWNERS              # factory team merges to main (= publish)
-renovate.json                   # upstream tag+commit, UBI digest
-Makefile, tests/                # make verify: lint + image.yaml rules + script tests
-scripts/new-image.sh, scripts/check-image.sh
-docs/adr/, docs/references.md
+scripts/                        # one script per pipeline step; the same scripts run locally and in CI
+Makefile                        # make verify (checks on the repo), make image (build + check one image)
+tests/                          # tests for the scripts and the checks
+.github/workflows/build-certify.yaml  # the pipeline, as a reusable workflow (ADR-006)
+.github/workflows/images.yaml         # calls it for every image on pull requests
+.github/workflows/verify.yaml         # make verify on pull requests
+renovate.json                   # upstream tag+commit, UBI digest, toolchain digest
+docs/                           # vision, method, roadmap, planning docs, ADRs, references
 ```
 
 ## Pipeline
-PR: pinned clone (fails if the tag moved) → Hermeto prefetch → build with network off → syft SBOM → VEX expiry check → trivy gate (fixable CRITICAL and HIGH) → preflight dry run.
-main adds: push to `quay.io/redhat-isv-containers/<componentId>` → cosign sign and SBOM attestations (image + dependencies) → build provenance → `preflight --submit`. Partner Connect then auto-publishes.
+On a pull request, per image:
+
+1. **Fetch** the pinned commit. Fails if the tag points anywhere else.
+2. **Patch**: apply `patches/*.patch`. Fails if a patch touches anything but dependency manifests and lockfiles.
+3. **Prefetch** dependencies with Hermeto. This is the only step that uses the network.
+4. **Build** with `--network=none`, for `linux/amd64`.
+5. **Test** the image: labels match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
+6. **Scan**: syft SBOM of the image, Hermeto SBOM of the inputs, trivy gate on fixable CRITICAL and HIGH.
+7. **Preflight dry run**: Red Hat's certification checks against a throwaway local registry. Nothing is submitted.
+
+A separate job proves a build step cannot reach the network (`make test-hermetic`).
+
+Planned for `main` (story P.2): push to `quay.io/redhat-isv-containers/<componentId>` → cosign signature and SBOM attestations → build provenance → `preflight --submit`.
+
+## Run it locally
+You need docker or podman, `make`, `git` and `jq`. Every other tool runs from a container image pinned by digest.
+
+```
+make verify                  # checks on the repo: lint, image.yaml rules, script tests
+make image IMAGE=opencost    # build, test, scan and dry-run certify one image
+make test-hermetic           # prove a build step cannot reach the network
+```
+
+On an Apple Silicon Mac, `make image` compiles under amd64 emulation and is very slow. CI takes about four minutes.
 
 ## Add an image
-1. `scripts/new-image.sh <name> <owner/repo> <tag>`. This fills in the tag's commit; then edit the build stage and `build.prefetch`. Run `make verify` until it passes: it will reject the scaffold until the licence and Go version are filled in.
-2. Check the admission rules (ADR-002 rule 1). Record the licence in `image.yaml`.
-3. Partner Connect → product → Add component → Container image, **UBI**, **Red Hat Container Registry**. Put the component ID in `image.yaml`.
-4. Submit the export questionnaire (batch several new components in one form).
-5. Add repo secrets `RH_PYXIS_TOKEN_<SUFFIX>`, `RH_REGISTRY_USER_<SUFFIX>`, `RH_REGISTRY_PASSWORD_<SUFFIX>`.
-6. Open a PR. The factory team merges, and the pipeline certifies.
+1. Check the admission rules (ADR-002 rule 1).
+2. `scripts/new-image.sh <name> <owner/repo> <tag>`. This fills in the tag's commit.
+3. Edit `image.yaml` (licence, `test.command`, `build.prefetch`) and the Containerfile (`GO_TAG` to match upstream's `go.mod`, build path, labels, `/licenses`). Run `make verify` until it passes; it rejects the scaffold as generated.
+4. Open a PR. The pipeline builds and checks the image.
+5. For certification (story P.2, not automated yet): Partner Connect → product → Add component → Container image, **UBI**, **Red Hat Container Registry**. Put the component ID in `image.yaml`, submit the export questionnaire, and add the repo secrets.
 
 ## Consuming
 - **Operators:** CSV `relatedImages` + `RELATED_IMAGE_<NAME>`, by digest. Never upstream tags.
-- **Crossplane (SCO):** install `stakater/<provider>` packages by digest. Air-gapped customers add an `ImageConfig` with `rewriteImage.prefix` to their mirror (Crossplane ≥ 1.20).
+- **Crossplane (SCO):** install `stakater/<provider>` packages by digest. Air-gapped customers add an `ImageConfig` with `rewriteImage.prefix` to their mirror (Crossplane ≥ 1.20). This path is Proposed (ADR-005).
 
 ## Verify (customers)
-```
-cosign verify <ref>@sha256:... \
-  --certificate-identity-regexp '^https://github.com/stakater/certified-images/.github/workflows/build-certify.yaml@refs/heads/main$' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-cosign verify-attestation --type spdxjson <same flags> <ref>@sha256:...
-gh attestation verify oci://<ref>@sha256:... --repo stakater/certified-images
-```
+Not available yet: nothing is signed until story P.2. The commands will name the reusable workflow as the signing identity (ADR-006) and will be written here once they have been run against a published image.
 
-## Status
-**Nothing has been built yet, and the pipeline does not exist yet.** `.github/workflows/build-certify.yaml` and `.github/CODEOWNERS` are described below and in the ADRs but are not in the repo; story P.1 in [docs/roadmap.md](docs/roadmap.md) writes them. The Pipeline, Add an image and Verify sections describe the design, not something you can run today. How we work: [docs/method.md](docs/method.md).
+## What P.1 settled, and what is still unverified
+Checked by running it (2026-11-25):
+- Hermeto's `gomod` prefetch works with upstream's `go 1.27.3` directive and its local `replace` modules. It needs the source to be a git repository.
+- Hermeto's dependency SBOM is `hermeto-output/bom.json`. It is CycloneDX by default; we ask for SPDX.
+- preflight 1.23.0 uses `--certification-component-id`. A dry run needs a registry, so the pipeline starts a local one.
+- `ubi9/ubi-minimal` ships a CA bundle. `ubi9/ubi-micro` does not, so OpenCost stays on `ubi-minimal` (ADR-004).
+- All tool images and GitHub actions are pinned by digest or commit.
 
-## Before the first production run (unverified items)
-Check these on the first CI run:
-- [ ] Pin `HERMETO_IMAGE`, preflight, trivy-action and other actions by digest or version.
-- [ ] Hermeto `gomod` prefetch works with upstream's `go 1.27.3` directive and its local `replace` modules (`./core`, `./modules/*`).
-- [ ] Hermeto dependency SBOM file name (`bom.json` assumed).
-- [ ] preflight flag `--certification-component-id` vs `--certification-project-id` on the pinned version.
-- [ ] `TRIVY_VEX` env is honoured by the pinned trivy.
-- [ ] Renovate pins the UBI base digest on its first run (Dependency Dashboard).
-- [ ] `ubi9/ubi-minimal` CA bundle is enough for OpenCost's outbound TLS (cloud pricing APIs).
-
-## Local build (mirrors CI)
-```
-git clone --depth 1 --branch v1.121.5 https://github.com/opencost/opencost .ctx/src && rm -rf .ctx/src/.git
-cp images/opencost/Containerfile .ctx/
-H="podman run --rm -v $PWD/.ctx:$PWD/.ctx:z -w $PWD/.ctx ghcr.io/hermetoproject/hermeto:latest"
-$H fetch-deps --source ./src --output ./hermeto-output '{"type": "gomod", "path": "."}'
-$H generate-env ./hermeto-output -o ./hermeto.env --for-output-dir /tmp/hermeto-output
-$H inject-files ./hermeto-output --for-output-dir /tmp/hermeto-output
-podman build --network=none -t opencost:test .ctx
-```
+Still unverified:
+- [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
+- [ ] Renovate pins and refreshes the UBI and toolchain digests. The config validates, but the Renovate app has not run on this repo.
+- [ ] OpenCost's outbound TLS to cloud pricing APIs works in a cluster. The CA bundle is present; no request has been made.
