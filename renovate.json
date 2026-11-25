@@ -20,6 +20,15 @@
         "# renovate: datasource=(?<datasource>docker) depName=(?<depName>\\S+)\\nARG BASE_TAG=(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"
       ],
       "autoReplaceStringTemplate": "# renovate: datasource={{{datasource}}} depName={{{depName}}}\nARG BASE_TAG={{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Build-stage Go toolchain in Containerfiles (ADR-004): tag@digest, reviewed by a human",
+      "managerFilePatterns": ["/(^|/)Containerfile(\\.ubi)?$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>docker) depName=(?<depName>\\S+)\\nARG GO_TAG=(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"
+      ],
+      "autoReplaceStringTemplate": "# renovate: datasource={{{datasource}}} depName={{{depName}}}\nARG GO_TAG={{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}"
     }
   ],
   "dockerfile": {
@@ -39,6 +48,12 @@
       "matchPackageNames": ["registry.access.redhat.com/ubi9/ubi-minimal", "registry.access.redhat.com/ubi9/ubi-micro"],
       "matchUpdateTypes": ["digest", "pin", "pinDigest"],
       "automerge": true
+    },
+    {
+      "description": "Toolchain bumps are never automerged: a new Go can change the binary (ADR-004)",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["docker.io/library/golang", "registry.access.redhat.com/ubi9/go-toolset"],
+      "automerge": false
     },
     {
       "description": "Upstream bumps need a human: check go.mod Go version, licence, NOTICE changes",

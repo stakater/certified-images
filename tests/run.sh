@@ -87,9 +87,17 @@ prefetch-generic|image.yaml|s/"type": "gomod"/"type": "generic"/|6
 secret-suffix-lowercase|image.yaml|s/secretSuffix: IMAGE_GOOD/secretSuffix: image-good/|7
 version-drift|Containerfile|s/^ARG UPSTREAM_VERSION=v1.2.3/ARG UPSTREAM_VERSION=v1.2.2/|8
 commit-drift|Containerfile|s/^ARG UPSTREAM_COMMIT=0123/ARG UPSTREAM_COMMIT=ffff/|8
-go-version-drift|Containerfile|s/^ARG GO_VERSION=1.27.3/ARG GO_VERSION=1.26.0/|8
 base-arg-missing|Containerfile|/^ARG BASE_IMAGE=/d|9
+base-unpinned|Containerfile|s/^ARG BASE_TAG=latest@sha256:.*/ARG BASE_TAG=latest/|10
+toolchain-unpinned|Containerfile|s/^ARG GO_TAG=1.27.3@sha256:.*/ARG GO_TAG=1.27.3/|10
+from-literal-unpinned|Containerfile|s#^FROM docker.io/library/golang:.* AS build#FROM docker.io/library/golang:1.27.3 AS build#|10
+test-command-missing|image.yaml|/^  command:/d|11
+test-command-empty|image.yaml|s/^  command: .*/  command: []/|11
 CASES
+
+dir=$(mutate from-stage-alias Containerfile 's#^COPY --from=build /out /out#COPY --from=build /out /out#')
+printf 'FROM build AS again\nFROM scratch\nCOPY --from=again /out /out\n' >>"$dir/Containerfile"
+expect_pass "check-image: FROM <earlier stage> and FROM scratch need no digest" scripts/check-image.sh "$dir"
 
 expect_fail "check-image: missing directory fails" "" scripts/check-image.sh "$TMP/does-not-exist"
 
@@ -128,14 +136,14 @@ expect_fail "new-image: refuses an existing directory" "exists" new_image annota
 expect_fail "new-image: fails on an unknown tag" "not found" new_image ghost example/ghost v9.9.9
 expect_fail "new-image: missing arguments fail" "" new_image only-a-name
 
-# The scaffold is deliberately incomplete: licence and Go version are TODO.
-# check-image must flag exactly those two and nothing else.
+# The scaffold is deliberately incomplete: the licence is TODO and the start-up
+# test command is empty. check-image must flag exactly those two.
 scaffold_out=$(cd "$SANDBOX" && scripts/check-image.sh images/annotated 2>&1)
 scaffold_rules=$(printf '%s\n' "$scaffold_out" | grep -Eo ': rule [0-9]+:' | sort -u | tr -d ':\n')
-if [ "$scaffold_rules" = " rule 4 rule 8" ]; then
-  ok "new-image: scaffold fails only rule 4 (licence TODO) and rule 8 (Go version TODO)"
+if [ "$scaffold_rules" = " rule 11 rule 4" ]; then
+  ok "new-image: scaffold fails only rule 4 (licence TODO) and rule 11 (no test command)"
 else
-  ko "new-image: scaffold fails only rule 4 and rule 8" "got: '$scaffold_rules'
+  ko "new-image: scaffold fails only rule 4 and rule 11" "got: '$scaffold_rules'
 $scaffold_out"
 fi
 

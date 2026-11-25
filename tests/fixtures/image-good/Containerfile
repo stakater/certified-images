@@ -1,9 +1,11 @@
-ARG GO_VERSION=1.27.3
+# renovate: datasource=docker depName=docker.io/library/golang
+ARG GO_TAG=1.27.3@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ARG BASE_REGISTRY=registry.access.redhat.com
 ARG BASE_IMAGE=ubi9/ubi-minimal
-ARG BASE_TAG=latest
+# renovate: datasource=docker depName=registry.access.redhat.com/ubi9/ubi-minimal
+ARG BASE_TAG=latest@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
-FROM docker.io/library/golang:${GO_VERSION} AS build
+FROM docker.io/library/golang:${GO_TAG} AS build
 ARG UPSTREAM_VERSION=v1.2.3
 ARG UPSTREAM_COMMIT=0123456789abcdef0123456789abcdef01234567
 WORKDIR /src

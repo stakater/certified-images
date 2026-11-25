@@ -29,8 +29,9 @@ upstream:
   commit: ${COMMIT}
   license: TODO   # ADR-002 rule 1: Apache-2.0/MIT/BSD, else legal sign-off
 build:
-  goVersion: "TODO"   # from upstream go.mod
   prefetch: '{"type": "gomod", "path": "."}'   # typed fetchers only (ADR-003)
+test:
+  command: []   # TODO arguments that make the image start and exit 0, e.g. ["--help"]
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
   secretSuffix: ${SUFFIX}
@@ -42,4 +43,5 @@ sed -e "s#opencost/opencost#${REPO}#g" -e "s#OpenCost#${NAME}#g" -e "s#stakater/
     -e "s#^ARG UPSTREAM_COMMIT=.*#ARG UPSTREAM_COMMIT=${COMMIT}#" \
   images/opencost/Containerfile > "$DIR/Containerfile"
 echo "Scaffolded $DIR (${VERSION} @ ${COMMIT})."
-echo "Now fix: build stage (WORKDIR, go build path, ldflags), labels, /licenses paths, build.prefetch."
+echo "Now fix: licence, test.command, GO_TAG (match upstream's go.mod), build stage (WORKDIR, go build path, ldflags), labels, /licenses paths, build.prefetch."
+echo "Then run: make verify"

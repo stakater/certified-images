@@ -17,9 +17,12 @@ upstream:
   license: Apache-2.0
 
 build:
-  goVersion: "1.27.3"        # from upstream go.mod; bump together with upstream
   # Hermeto prefetch input (ADR-003). Typed fetchers only.
   prefetch: '{"type": "gomod", "path": "."}'
+
+test:
+  # Start-up test: the image must exit 0 when run with these arguments.
+  command: ["--help"]
 
 redhat:
   # Partner Connect container component (fill after creating the component)

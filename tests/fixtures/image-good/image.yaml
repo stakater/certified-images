@@ -11,8 +11,9 @@ upstream:
   commit: 0123456789abcdef0123456789abcdef01234567
   license: Apache-2.0
 build:
-  goVersion: "1.27.3"
   prefetch: '{"type": "gomod", "path": "."}'
+test:
+  command: ["--help"]
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
   secretSuffix: IMAGE_GOOD
