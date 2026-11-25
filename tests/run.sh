@@ -139,6 +139,81 @@ else
 $scaffold_out"
 fi
 
+# -------------------------------------------------------- fetch-source.sh
+# A throwaway local repository plays the upstream, so no network is needed.
+UP="$TMP/upstream"
+mkdir -p "$UP"
+(
+  cd "$UP" || exit 1
+  git init -q -b main .
+  git config user.email test@example.com
+  git config user.name test
+  git config uploadpack.allowAnySHA1InWant true
+  printf 'module example.com/up\n\ngo 1.27\n' >go.mod
+  printf 'package main\n\nfunc main() {}\n' >main.go
+  git add . && git commit -q -m one
+  git tag -a v1.0.0 -m v1.0.0
+  printf '// two\n' >>main.go
+  git commit -q -am two
+  git tag v1.1.0
+) >/dev/null 2>&1
+SHA1=$(git -C "$UP" rev-parse 'v1.0.0^{commit}')
+SHA2=$(git -C "$UP" rev-parse 'v1.1.0^{commit}')
+
+# fs_image <case> <version> <commit>: an image dir whose upstream is $UP
+fs_image() {
+  local dir="$TMP/fs/$1/img"
+  mkdir -p "$dir"
+  cat >"$dir/image.yaml" <<YAML
+kind: container
+name: img
+upstream:
+  repo: file://$UP
+  version: $2
+  commit: $3
+YAML
+  echo "$dir"
+}
+src_has() { grep -q -- "$2" "$1"; }
+
+d=$(fs_image ok-annotated v1.0.0 "$SHA1")
+expect_pass "fetch-source: annotated tag at the pinned commit" scripts/fetch-source.sh "$d" "$TMP/fs/ok-annotated/src"
+expect_pass "fetch-source: checked-out tree is the pinned commit, not the branch tip" \
+  bash -c "! grep -q two '$TMP/fs/ok-annotated/src/main.go'"
+expect_pass "fetch-source: .git is removed from the build context" \
+  bash -c "[ ! -e '$TMP/fs/ok-annotated/src/.git' ]"
+d=$(fs_image ok-light v1.1.0 "$SHA2")
+expect_pass "fetch-source: lightweight tag at the pinned commit" scripts/fetch-source.sh "$d" "$TMP/fs/ok-light/src"
+d=$(fs_image moved v1.0.0 "$SHA2")
+expect_fail "fetch-source: tag pointing at another commit fails" "tag v1.0.0 .* not .*$SHA2" \
+  scripts/fetch-source.sh "$d" "$TMP/fs/moved/src"
+d=$(fs_image no-tag v9.9.9 "$SHA1")
+expect_fail "fetch-source: unknown tag fails" "tag v9.9.9 not found" scripts/fetch-source.sh "$d" "$TMP/fs/no-tag/src"
+d=$(fs_image no-commit v1.0.0 ffffffffffffffffffffffffffffffffffffffff)
+expect_fail "fetch-source: unknown commit fails" "" scripts/fetch-source.sh "$d" "$TMP/fs/no-commit/src"
+d=$(fs_image exists v1.0.0 "$SHA1")
+mkdir -p "$TMP/fs/exists/src" && touch "$TMP/fs/exists/src/x"
+expect_fail "fetch-source: refuses a non-empty output directory" "not empty" scripts/fetch-source.sh "$d" "$TMP/fs/exists/src"
+
+# make_patch <file> <line to append>: a patch against the v1.0.0 tree
+make_patch() {
+  local w="$TMP/fs/patchwork"
+  rm -rf "$w" && git clone -q "$UP" "$w" 2>/dev/null && git -C "$w" checkout -q "$SHA1" 2>/dev/null
+  printf '%s\n' "$2" >>"$w/$1"
+  git -C "$w" diff
+}
+d=$(fs_image patch-dep v1.0.0 "$SHA1")
+mkdir -p "$d/patches" && make_patch go.mod 'require example.com/dep v1.2.3' >"$d/patches/0001-bump-dep.patch"
+expect_pass "fetch-source: a dependency-only patch applies" scripts/fetch-source.sh "$d" "$TMP/fs/patch-dep/src"
+expect_pass "fetch-source: the patch changed go.mod" src_has "$TMP/fs/patch-dep/src/go.mod" "example.com/dep v1.2.3"
+d=$(fs_image patch-code v1.0.0 "$SHA1")
+mkdir -p "$d/patches" && make_patch main.go '// patched' >"$d/patches/0001-code.patch"
+expect_fail "fetch-source: a patch touching source code fails" "main.go.*ADR-003" \
+  scripts/fetch-source.sh "$d" "$TMP/fs/patch-code/src"
+d=$(fs_image patch-stale v1.0.0 "$SHA1")
+mkdir -p "$d/patches" && make_patch go.mod 'x' | sed 's/go 1.27/go 9.99/' >"$d/patches/0001-stale.patch"
+expect_fail "fetch-source: a patch that does not apply fails" "" scripts/fetch-source.sh "$d" "$TMP/fs/patch-stale/src"
+
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
 hook_runs() { hook "{\"tool_input\":{\"file_path\":\"$ROOT/$1\"}}" | grep -q VERIFY-RAN; }
