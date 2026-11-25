@@ -37,7 +37,7 @@ possible before any CI exists.*
 
 ## Phase 1 — walking skeleton: OpenCost
 
-**Story P.1 — a pull request builds OpenCost hermetically** 👍 *(approved 2026-11-25; starts after DX.2)*
+**Story P.1 — a pull request builds OpenCost hermetically** 👍 *(approved 2026-11-25; planning: [p1-opencost-pr-build](planning/p1-opencost-pr-build.md))*
 *As the factory team, I want a PR to run pinned clone → Hermeto prefetch →
 offline build → SBOM → CVE gate → preflight dry run for OpenCost, so that we
 know the design in ADR-003, ADR-004 and ADR-008 works before we certify
