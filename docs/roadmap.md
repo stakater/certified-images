@@ -17,7 +17,7 @@ Stories are the unit of delivery. Each one must serve `docs/vision.md`.
 
 ## Phase 0 — method and decisions
 
-**Story DX.1 — the method and the decisions are written down and agreed** 🔨
+**Story DX.1 — the method and the decisions are written down and agreed** ✅ *(merged as PR #1, 2026-11-25)*
 *As a maintainer or a cold agent session, I want the working method, the vision
 and the ADRs agreed and in the repo, so that nobody builds from unreviewed
 decisions or re-derives the method from chat history.*
@@ -37,7 +37,7 @@ possible before any CI exists.*
 
 ## Phase 1 — walking skeleton: OpenCost
 
-**Story P.1 — a pull request builds OpenCost hermetically** 👍 *(approved 2026-11-25; starts after DX.2)*
+**Story P.1 — a pull request builds OpenCost hermetically** 🔨 *(planning: [p1-opencost-pr-build](planning/p1-opencost-pr-build.md))*
 *As the factory team, I want a PR to run pinned clone → Hermeto prefetch →
 offline build → SBOM → CVE gate → preflight dry run for OpenCost, so that we
 know the design in ADR-003, ADR-004 and ADR-008 works before we certify
@@ -49,6 +49,12 @@ anything.*
   green for `images/opencost`, including a start-up test of the image; the run
   fails when the tag does not match the pinned commit and when the build tries to reach the network; the "unverified items"
   list in the README is resolved item by item.
+- **Open before this is ✅:** Renovate has not run on the repo, so "Renovate
+  manages both" is configured and validated but not observed. The same goes
+  for the managers added in review (tool images in `tools.env`, and the
+  Containerfile's upstream version and commit). It needs the
+  Renovate app enabled by a repository admin. Everything else in the Done line
+  is met; the `ubi-micro` result is in ADR-004.
 
 **Story P.2 — OpenCost is certified and published** 📝
 *As the MTO team, I want a certified OpenCost image published with signature,
@@ -71,7 +77,7 @@ mirror, so that showback works without internet access.*
 
 - Scheduled daily re-scan of published digests (ADR-002 rule 4) and the first outer audit (method.md).
 - `<upstream-version>-<release>` tagging with an automatic release counter (ADR-002 rule 3).
-- `deviations` field in `image.yaml` and its schema check (ADR-002 rule 2).
+- Offer OpenCost's dependency bump upstream and record the PR link in `image.yaml` (ADR-002 rule 2).
 - Dex as the second third-party image.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).
 - Spike: build one Crossplane provider both ways and read the pod spec (ADR-005 open question 1).

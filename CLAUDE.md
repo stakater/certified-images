@@ -11,21 +11,21 @@ This is a build-and-release repo, not a service: the "code" is Containerfiles,
 
 ## Status — be honest about it
 
-**Nothing has been built yet.** As of 2026-11-25:
+As of 2026-11-25:
 
-- `images/opencost/` (Containerfile + `image.yaml`), `renovate.json` and
-  `scripts/new-image.sh` exist but have never run.
-- `.github/workflows/build-certify.yaml` and `.github/CODEOWNERS` are described in
-  the README and ADRs but **do not exist in the repo**.
-- `make verify` exists (story DX.2) and runs on every PR and after every agent
-  edit. It checks Containerfiles, scripts, workflows, `renovate.json` and
-  `image.yaml`. It does **not** build an image; nothing that needs a built image
-  is checked yet.
-- The ADRs were reviewed and revised on 2026-11-25 (story DX.1). They are
-  accepted when the first PR merges (ADR-001). ADR-005 and ADR-006 stay
-  Proposed. Treat every ⚠️ in `docs/` as unverified.
-- The Containerfile does not yet meet ADR-004: neither the UBI base nor the
-  toolchain image is digest-pinned.
+- **Pull requests build and check OpenCost end to end** (story P.1): pinned
+  source → Hermeto prefetch → offline build → start-up test → SBOMs → CVE gate →
+  preflight dry run. OpenCost v1.121.5 passes all of it on a GitHub runner.
+- **Nothing is published, signed or certified.** No workflow pushes anywhere,
+  and no secrets exist. That is story P.2.
+- `make verify` (story DX.2) runs on every PR and after every agent edit.
+- OpenCost carries one deviation from upstream: a dependency-only patch for
+  four HIGH vulnerabilities (`images/opencost/image.yaml`, `deviations`).
+- **Not set up, and needing a repository admin:** `.github/CODEOWNERS`, branch
+  protection on `main`, the Renovate app. Until Renovate has run, treat its
+  config as unproven.
+- ADR-001 to 004, 007 and 008 were accepted by the merge of PR #1 on 2026-11-25
+  (ADR-001). ADR-005 and ADR-006 stay Proposed. Treat every ⚠️ in `docs/` as unverified.
 
 Update this section when it stops being true.
 
@@ -91,25 +91,29 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 ## Testing — what "red → green" means here
 
 There is no application code, so tests are checks on the factory's inputs and
-outputs. `make verify` runs the Static and Unit levels today; Image and End to
-end arrive with story P.1.
+outputs. `make verify` runs the Static and Unit levels. The Image and End to end
+levels need a build, so they run in CI (`images.yaml`) and locally with
+`make image IMAGE=<name>`.
 
 | Level | Checks | Tools |
 |---|---|---|
 | Static | Containerfile lint, shell lint, `image.yaml` rules, Renovate config, workflow lint | hadolint, shellcheck, `scripts/check-image.sh`, `renovate-config-validator`, actionlint |
 | Unit | Scripts and check logic against fixtures; every check is shown to fail on a broken input | `tests/run.sh` (plain bash) |
-| Image | The built image has the required labels, `/licenses`, non-root user, and starts | container-structure-test or equivalent, preflight dry run |
-| End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight | the CI workflow itself |
+| Image | The built image has the required labels, `/licenses`, non-root user, and starts as an arbitrary UID | `scripts/test-image.sh`, `scripts/preflight-dry-run.sh` |
+| End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight; a separate job proves builds cannot reach the network | `build-certify.yaml`, `make test-hermetic` |
 
 Rules for working with it:
 
 - **Run `make verify` before calling a change done**, and report its real
   output. It needs a running container engine (`ENGINE=docker` or `podman`);
-  every tool is a container image pinned by digest in the `Makefile`.
+  every tool is a container image pinned by digest in `tools.env`, the only
+  place a tool is pinned.
 - **A new rule starts as a failing case in `tests/run.sh`**, then the rule.
 - A check that cannot run must fail. Never make one skip silently.
-- For anything `make verify` does not cover, say plainly what was checked by
-  hand and what was not checked.
+- `make image` under emulation on an Apple Silicon Mac is very slow. Use the
+  PR's CI run as the image-level evidence and say that you did.
+- For anything the checks do not cover, say plainly what was checked by hand
+  and what was not checked.
 
 ## Conventions
 
@@ -131,13 +135,24 @@ Rules for working with it:
 images/<name>/image.yaml       one manifest per artifact (kind, upstream tag + commit, prefetch, Red Hat component)
 images/<name>/Containerfile    hermetic build stage + parameterised UBI runtime stage
 images/<name>/vex.openvex.json optional CVE exceptions
-images/<name>/patches/*.patch  optional dependency-only patches (ADR-003 §6)
+images/<name>/patches/*.patch  optional dependency-only patches, listed under deviations
 scripts/new-image.sh           scaffolds a new image from the OpenCost one
-scripts/check-image.sh         our own rules for one image directory
+scripts/check-image.sh         our own rules for one image directory (12 rules)
+scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches
+scripts/prefetch.sh            Hermeto prefetch (the only networked build step)
+scripts/build-image.sh         fetch -> prefetch -> build with the network off
+scripts/test-image.sh          labels, /licenses, non-root, starts
+scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
+scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
+scripts/test-hermetic.sh       proves a build step cannot reach the network
 scripts/verify-hook.sh         agent edit hook that runs make verify
-Makefile                       make verify: every check, tools pinned by digest
+Makefile                       make verify (repo checks), make image (one image)
+tools.env                      every tool image, pinned by digest, kept current by Renovate
+scripts/lib.sh                 shared: container engine and tool pins
 tests/run.sh, tests/fixtures/  tests for the scripts and the checks
 .github/workflows/verify.yaml  runs make verify on pull requests
+.github/workflows/build-certify.yaml  the pipeline, as a reusable workflow
+.github/workflows/images.yaml  calls it for every image on pull requests
 renovate.json                  bumps upstream tag + commit and the UBI base digest
 docs/vision.md, method.md, roadmap.md, planning/, adr/, references.md
 ```

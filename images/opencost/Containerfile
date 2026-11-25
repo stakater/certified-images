@@ -1,16 +1,20 @@
 # Stakater build of OpenCost: rebuilt from upstream source on Red Hat UBI.
-# Hermetic (ADR-003): CI clones the pinned commit into ./src and Hermeto-prefetches
-# Go modules into ./hermeto-output, then runs `docker build --network=none`.
+# Hermetic (ADR-003): scripts/build-image.sh fetches the pinned commit into ./src,
+# Hermeto-prefetches Go modules into ./hermeto-output, then builds with the network off.
 # Base images are parameterised and digest-pinned (ADR-004).
 
-ARG GO_VERSION=1.27.3
+# Build-stage toolchain: not shipped, pinned by digest all the same (ADR-004).
+# The Go version must satisfy the `go` directive in upstream's go.mod.
+# renovate: datasource=docker depName=docker.io/library/golang
+ARG GO_TAG=1.27.3@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e
 ARG BASE_REGISTRY=registry.access.redhat.com
 ARG BASE_IMAGE=ubi9/ubi-minimal
 # renovate: datasource=docker depName=registry.access.redhat.com/ubi9/ubi-minimal
-ARG BASE_TAG=latest
+ARG BASE_TAG=latest@sha256:08d4c70f1baf6537a0728656cf7942d561e74a35916509d205b6519861266352
 
 ########## build stage (not shipped) ##########
-FROM docker.io/library/golang:${GO_VERSION} AS build
+FROM docker.io/library/golang:${GO_TAG} AS build
+# renovate: datasource=github-tags depName=opencost/opencost
 ARG UPSTREAM_VERSION=v1.121.5
 ARG UPSTREAM_COMMIT=32dbf049c84c66db1efeb9fc9a98e5042f076cf1
 COPY src/ /src/
@@ -28,6 +32,7 @@ RUN . /tmp/hermeto.env && \
 ########## runtime stage (certified) ##########
 FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
 
+# renovate: datasource=github-tags depName=opencost/opencost
 ARG UPSTREAM_VERSION=v1.121.5
 ARG UPSTREAM_COMMIT=32dbf049c84c66db1efeb9fc9a98e5042f076cf1
 ARG RELEASE=1

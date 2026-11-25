@@ -5,8 +5,8 @@
 # The rules and their reasons are in docs/planning/dx2-make-verify.md.
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
-YQ_IMAGE=${YQ_IMAGE:-docker.io/mikefarah/yq:4.54.3@sha256:7834187596ad56fd5a81436114e0b0b9dd54c91bb43946d1f7145b2be5f9c3d2}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 
 DIR=${1:?usage: check-image.sh images/<name>}
 DIR=${DIR%/}
@@ -42,6 +42,7 @@ esac
 
 # rule 2: name equals the directory name
 name=$(get .name)
+[[ "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || err 2 "name '$name' must be a lowercase slug: letters, digits and hyphens"
 [ "$name" = "$(basename "$DIR")" ] || err 2 "name '$name' must equal the directory name '$(basename "$DIR")'"
 
 # rule 3: pinned upstream (ADR-003 §1)
@@ -98,13 +99,51 @@ drift() { # <ARG name> <expected value> <image.yaml field>
 }
 drift UPSTREAM_VERSION "$version" upstream.version
 drift UPSTREAM_COMMIT "$commit" upstream.commit
-go_version=$(get .build.goVersion)
-[ -z "$go_version" ] || drift GO_VERSION "$go_version" build.goVersion
 
 # rule 9: parameterised base (ADR-004)
 for arg in BASE_REGISTRY BASE_IMAGE BASE_TAG; do
   grep -q "^ARG $arg=" "$CF" || err 9 "Containerfile must declare 'ARG $arg=' (ADR-004)"
 done
+
+# rule 10: every external image is pinned by digest (ADR-004). An unpinned
+# base or toolchain is an unpinned build input.
+while IFS= read -r line; do
+  [[ "$line" =~ ^ARG[[:space:]]+([A-Z0-9_]*_TAG)=(.*)$ ]] || continue
+  arg=${BASH_REMATCH[1]}
+  value=${BASH_REMATCH[2]}
+  [[ "$value" =~ ^[^@[:space:]]+@sha256:[a-f0-9]{64}$ ]] ||
+    err 10 "ARG $arg must be tag@sha256:<digest>, got '$value' (ADR-004)"
+done <"$CF"
+stages=" scratch "
+while read -r _ ref as alias _; do
+  case "$ref" in --platform=*) err 10 "FROM $ref: put the platform on the build command, not in the Containerfile" ;; esac
+  if [[ "$stages" != *" $ref "* ]] && [[ "$ref" != *'_TAG}'* ]] && [[ "$ref" != *@sha256:* ]]; then
+    err 10 "FROM $ref is not pinned: use an ARG ending in _TAG that holds tag@sha256:<digest>, or a literal digest (ADR-004)"
+  fi
+  [ "$(printf '%s' "${as:-}" | tr '[:lower:]' '[:upper:]')" = "AS" ] && stages="$stages$alias "
+done < <(grep -E '^FROM[[:space:]]' "$CF")
+
+# rule 11: a start-up test command, so a published image is known to run
+if ! printf '%s' "$JSON" | jq -e '(.test.command // []) | type == "array" and length > 0 and all(.[]; type == "string" and . != "" and . != "TODO")' >/dev/null; then
+  err 11 "test.command must be a non-empty list of arguments that make the image exit 0 (e.g. [\"--help\"])"
+fi
+
+# rule 12: every patch is a recorded deviation, and every recorded deviation
+# has its patch (ADR-002 rule 2). A deviation exists only to fix a
+# vulnerability, so it must name what it fixes.
+listed=$(printf '%s' "$JSON" | jq -r '(.deviations // [])[] | .patch // ""')
+shopt -s nullglob
+for patch in "$DIR"/patches/*.patch; do
+  rel="patches/$(basename "$patch")"
+  printf '%s\n' "$listed" | grep -qxF "$rel" || err 12 "$rel is not listed under deviations in image.yaml (ADR-002 rule 2)"
+done
+shopt -u nullglob
+while IFS= read -r rel; do
+  [ -z "$rel" ] && continue
+  [ -f "$DIR/$rel" ] || err 12 "deviation lists $rel, but that file does not exist"
+done <<<"$listed"
+bad=$(printf '%s' "$JSON" | jq -r '(.deviations // [])[] | select(((.reason // "") == "") or (((.fixes // []) | length) == 0)) | .patch // "(no patch)"')
+[ -z "$bad" ] || err 12 "deviation $(echo "$bad" | tr '\n' ' ')needs a reason and a non-empty fixes list of vulnerability IDs"
 
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

@@ -1,0 +1,74 @@
+# The factory pipeline, as a reusable workflow (ADR-006).
+#
+# Today it only builds and checks (story P.1): pinned source -> Hermeto
+# prefetch -> offline build -> start-up test -> SBOMs + CVE gate -> preflight
+# dry run. It needs no secrets and publishes nothing. Push, signing and
+# `preflight --submit` arrive with story P.2 behind the `publish` input.
+#
+# Every step is a script or make target, so `make image IMAGE=<name>` runs the
+# same thing on a laptop (ADR-007: nothing here is GitHub-specific).
+name: build-certify
+
+on:
+  workflow_call:
+    inputs:
+      image-dir:
+        description: Directory holding image.yaml and Containerfile, e.g. images/opencost
+        required: true
+        type: string
+      publish:
+        description: Push, sign and submit for certification. Not implemented yet (story P.2).
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ inputs.image-dir }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      IMAGE_DIR: ${{ inputs.image-dir }}
+    steps:
+      - name: Refuse to publish
+        if: ${{ inputs.publish }}
+        run: |
+          echo "::error::publish=true is not implemented. Story P.2 adds push, signing and submission."
+          exit 1
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Build (pinned source, prefetch, network off)
+        run: make build IMAGE_DIR="$IMAGE_DIR"
+
+      - name: Test the image
+        run: make test-image IMAGE_DIR="$IMAGE_DIR"
+
+      - name: SBOMs and CVE gate
+        run: make scan IMAGE_DIR="$IMAGE_DIR"
+
+      - name: Certification dry run (preflight)
+        run: make preflight IMAGE_DIR="$IMAGE_DIR"
+
+      - name: Evidence file name
+        id: evidence
+        if: ${{ !cancelled() }}
+        run: |
+          # Files written by the tool containers belong to root; make them readable.
+          sudo chown -R "$(id -u):$(id -g)" .ctx 2>/dev/null || true
+          echo "name=evidence-$(basename "$IMAGE_DIR")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.evidence.outputs.name }}
+          path: .ctx/*/evidence/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
