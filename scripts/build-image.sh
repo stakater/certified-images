@@ -7,7 +7,8 @@
 # CTX overrides the build context directory (default .ctx/<name>).
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 PLATFORM=linux/amd64 # ADR-002 rule 8
 
 DIR=${1:?usage: build-image.sh images/<name>}

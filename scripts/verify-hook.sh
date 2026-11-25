@@ -17,7 +17,7 @@ file="$(printf '%s' "$payload" |
 
 case "$file" in
   */Containerfile | */Containerfile.ubi | */image.yaml | */vex.openvex.json | *.patch | \
-    *.sh | */renovate.json | renovate.json | */Makefile | Makefile | \
+    *.sh | */tools.env | tools.env | */renovate.json | renovate.json | */Makefile | Makefile | \
     */.github/workflows/* | .github/workflows/* | */.hadolint.yaml | .hadolint.yaml | \
     */tests/fixtures/*)
     # Verify the tree the file lives in, which may be a git worktree and not

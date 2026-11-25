@@ -9,6 +9,7 @@ on:
       - images/**
       - scripts/**
       - Makefile
+      - tools.env
       - .github/workflows/images.yaml
       - .github/workflows/build-certify.yaml
       - tests/fixtures/network/**
@@ -33,7 +34,9 @@ jobs:
       - name: List image directories
         id: list
         run: |
-          dirs=$(find images -mindepth 2 -maxdepth 2 -name image.yaml -exec dirname {} \; | sort | jq -R . | jq -cs .)
+          # Only plain lowercase slugs: the name becomes a matrix value and a make argument.
+          dirs=$(find images -mindepth 2 -maxdepth 2 -name image.yaml -exec dirname {} \; | sort |
+            grep -E '^images/[a-z0-9]([a-z0-9-]*[a-z0-9])?$' | jq -R . | jq -cs .)
           echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
           echo "Images: $dirs"
 

@@ -24,8 +24,8 @@ As of 2026-11-25:
 - **Not set up, and needing a repository admin:** `.github/CODEOWNERS`, branch
   protection on `main`, the Renovate app. Until Renovate has run, treat its
   config as unproven.
-- The ADRs are accepted when the first PR merges (ADR-001). ADR-005 and ADR-006
-  stay Proposed. Treat every ⚠️ in `docs/` as unverified.
+- ADR-001 to 004, 007 and 008 were accepted by the merge of PR #1 on 2026-11-25
+  (ADR-001). ADR-005 and ADR-006 stay Proposed. Treat every ⚠️ in `docs/` as unverified.
 
 Update this section when it stops being true.
 
@@ -106,7 +106,8 @@ Rules for working with it:
 
 - **Run `make verify` before calling a change done**, and report its real
   output. It needs a running container engine (`ENGINE=docker` or `podman`);
-  every tool is a container image pinned by digest in the `Makefile`.
+  every tool is a container image pinned by digest in `tools.env`, the only
+  place a tool is pinned.
 - **A new rule starts as a failing case in `tests/run.sh`**, then the rule.
 - A check that cannot run must fail. Never make one skip silently.
 - `make image` under emulation on an Apple Silicon Mac is very slow. Use the
@@ -145,7 +146,9 @@ scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
 scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
 scripts/verify-hook.sh         agent edit hook that runs make verify
-Makefile                       make verify: every check, tools pinned by digest
+Makefile                       make verify (repo checks), make image (one image)
+tools.env                      every tool image, pinned by digest, kept current by Renovate
+scripts/lib.sh                 shared: container engine and tool pins
 tests/run.sh, tests/fixtures/  tests for the scripts and the checks
 .github/workflows/verify.yaml  runs make verify on pull requests
 .github/workflows/build-certify.yaml  the pipeline, as a reusable workflow

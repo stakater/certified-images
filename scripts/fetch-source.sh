@@ -11,8 +11,8 @@
 # repository. scripts/prefetch.sh removes it once the prefetch is done.
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
-YQ_IMAGE=${YQ_IMAGE:-docker.io/mikefarah/yq:4.54.3@sha256:7834187596ad56fd5a81436114e0b0b9dd54c91bb43946d1f7145b2be5f9c3d2}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 
 DIR=${1:?usage: fetch-source.sh images/<name> <output-dir>}
 OUT=${2:?usage: fetch-source.sh images/<name> <output-dir>}

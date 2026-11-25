@@ -37,11 +37,12 @@ images/<name>/patches/*.patch   # optional dependency-only patches, each listed 
 images/<name>/vex.openvex.json  # optional CVE exceptions (ADR-008)
 scripts/                        # one script per pipeline step; the same scripts run locally and in CI
 Makefile                        # make verify (checks on the repo), make image (build + check one image)
+tools.env                       # every tool image, pinned by digest; the only place a tool is pinned
 tests/                          # tests for the scripts and the checks
 .github/workflows/build-certify.yaml  # the pipeline, as a reusable workflow (ADR-006)
 .github/workflows/images.yaml         # calls it for every image on pull requests
 .github/workflows/verify.yaml         # make verify on pull requests
-renovate.json                   # upstream tag+commit, UBI digest, toolchain digest
+renovate.json                   # upstream tag+commit, UBI digest, toolchain digest, tool images
 docs/                           # vision, method, roadmap, planning docs, ADRs, references
 ```
 
@@ -95,5 +96,5 @@ Checked by running it (2026-11-25):
 
 Still unverified:
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
-- [ ] Renovate pins and refreshes the UBI and toolchain digests. The config validates, but the Renovate app has not run on this repo.
+- [ ] Renovate keeps current: the UBI and toolchain digests, the upstream tag and commit (in `image.yaml` and the Containerfile together), and the tool images in `tools.env`. The config validates, but the Renovate app has not run on this repo.
 - [ ] OpenCost's outbound TLS to cloud pricing APIs works in a cluster. The CA bundle is present; no request has been made.

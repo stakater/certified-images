@@ -10,9 +10,8 @@
 # does not cover. The VEX file itself is checked first (scripts/check-vex.sh).
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
-SYFT_IMAGE=${SYFT_IMAGE:-docker.io/anchore/syft:v1.57.2@sha256:e97e20b6e6d1699c60296b66ab337941724f9bd06ac279d893eda89601fc4b2a}
-TRIVY_IMAGE=${TRIVY_IMAGE:-docker.io/aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 
 REF=${1:?usage: scan-image.sh <image-ref> images/<name> <context-dir>}
 DIR=${2:?usage: scan-image.sh <image-ref> images/<name> <context-dir>}
@@ -43,6 +42,7 @@ else
   exit 1
 fi
 
+# ${arr[@]+"${arr[@]}"}: bash 3.2 (macOS) treats an empty array as unset under set -u.
 vex=()
 if [ -f "$DIR/vex.openvex.json" ]; then
   vex=(-v "$DIR/vex.openvex.json:/vex.openvex.json:ro")
@@ -52,9 +52,9 @@ else
 fi
 
 set +e
-"$ENGINE" run --rm -v "$EV:/ev" -v "$CTX/.trivy-cache:/root/.cache/trivy" "${vex[@]}" "$TRIVY_IMAGE" \
+"$ENGINE" run --rm -v "$EV:/ev" -v "$CTX/.trivy-cache:/root/.cache/trivy" ${vex[@]+"${vex[@]}"} "$TRIVY_IMAGE" \
   image --input /ev/image.tar --scanners vuln --ignore-unfixed --severity CRITICAL,HIGH \
-  --exit-code 1 --no-progress "${vex_flag[@]}" | tee "$EV/trivy.txt"
+  --exit-code 1 --no-progress ${vex_flag[@]+"${vex_flag[@]}"} | tee "$EV/trivy.txt"
 rc=${PIPESTATUS[0]}
 set -e
 

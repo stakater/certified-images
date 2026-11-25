@@ -17,7 +17,7 @@ Stories are the unit of delivery. Each one must serve `docs/vision.md`.
 
 ## Phase 0 — method and decisions
 
-**Story DX.1 — the method and the decisions are written down and agreed** 🔨
+**Story DX.1 — the method and the decisions are written down and agreed** ✅ *(merged as PR #1, 2026-11-25)*
 *As a maintainer or a cold agent session, I want the working method, the vision
 and the ADRs agreed and in the repo, so that nobody builds from unreviewed
 decisions or re-derives the method from chat history.*
@@ -50,7 +50,9 @@ anything.*
   fails when the tag does not match the pinned commit and when the build tries to reach the network; the "unverified items"
   list in the README is resolved item by item.
 - **Open before this is ✅:** Renovate has not run on the repo, so "Renovate
-  manages both" is configured and validated but not observed. It needs the
+  manages both" is configured and validated but not observed. The same goes
+  for the managers added in review (tool images in `tools.env`, and the
+  Containerfile's upstream version and commit). It needs the
   Renovate app enabled by a repository admin. Everything else in the Done line
   is met; the `ubi-micro` result is in ADR-004.
 

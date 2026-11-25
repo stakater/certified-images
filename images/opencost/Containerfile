@@ -14,6 +14,7 @@ ARG BASE_TAG=latest@sha256:08d4c70f1baf6537a0728656cf7942d561e74a35916509d205b65
 
 ########## build stage (not shipped) ##########
 FROM docker.io/library/golang:${GO_TAG} AS build
+# renovate: datasource=github-tags depName=opencost/opencost
 ARG UPSTREAM_VERSION=v1.121.5
 ARG UPSTREAM_COMMIT=32dbf049c84c66db1efeb9fc9a98e5042f076cf1
 COPY src/ /src/
@@ -31,6 +32,7 @@ RUN . /tmp/hermeto.env && \
 ########## runtime stage (certified) ##########
 FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
 
+# renovate: datasource=github-tags depName=opencost/opencost
 ARG UPSTREAM_VERSION=v1.121.5
 ARG UPSTREAM_COMMIT=32dbf049c84c66db1efeb9fc9a98e5042f076cf1
 ARG RELEASE=1

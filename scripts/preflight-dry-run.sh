@@ -8,9 +8,8 @@
 # preflight's own lookups against Red Hat's catalog API.
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
-PREFLIGHT_IMAGE=${PREFLIGHT_IMAGE:-quay.io/opdev/preflight:1.23.0@sha256:7cf165916f19e2b7321ecb476f185ac2fbca686e2c633b08a0711e3c9ddf284a}
-REGISTRY_IMAGE=${REGISTRY_IMAGE:-docker.io/library/registry:3.1.2@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 PORT=${PREFLIGHT_REGISTRY_PORT:-5055}
 NET=preflight-dry-run
 REG=preflight-dry-run-registry

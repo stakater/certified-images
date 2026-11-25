@@ -8,7 +8,8 @@
 # Without the control, a failure in 2 could be a broken fixture, not isolation.
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FIXTURE="$ROOT/tests/fixtures/network"
 TAG=localhost/stakater/hermetic-test:fixture

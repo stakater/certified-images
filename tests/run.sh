@@ -45,6 +45,27 @@ $out"
   fi
 }
 
+# ------------------------------------------------------------- tool pins
+# One place for every tool image, so Renovate can keep them current and a bump
+# is one line. A digest anywhere else is a pin nobody maintains.
+stray_pins() {
+  ! grep -nE '@sha256:[a-f0-9]{64}' Makefile scripts/*.sh .github/workflows/*.yaml
+}
+expect_pass "tool pins: no image digest outside tools.env" stray_pins
+tools_env_shape() {
+  awk '
+    /^#/ { comment = $0; next }
+    /^$/ { comment = ""; next }
+    {
+      if ($0 !~ /^[A-Z_]+_IMAGE=[^[:space:]@]+:[^[:space:]@]+@sha256:[a-f0-9]+$/) { print "not NAME_IMAGE=repo:tag@sha256:digest: " $0; bad = 1 }
+      if (comment !~ /^# renovate: datasource=docker depName=[^[:space:]]+$/) { print "no renovate comment above: " $0; bad = 1 }
+      comment = ""
+    }
+    END { exit bad }
+  ' tools.env
+}
+expect_pass "tool pins: every tools.env entry is tag@digest with a renovate comment" tools_env_shape
+
 # ---------------------------------------------------------------- linters
 # Each linter target must reject its broken fixture. A linter that cannot fail
 # is not a check.
@@ -99,6 +120,13 @@ dir=$(mutate from-stage-alias Containerfile 's#^COPY --from=build /out /out#COPY
 printf 'FROM build AS again\nFROM scratch\nCOPY --from=again /out /out\n' >>"$dir/Containerfile"
 expect_pass "check-image: FROM <earlier stage> and FROM scratch need no digest" scripts/check-image.sh "$dir"
 
+# rule 2 also restricts the name: it ends up in image references, secret names
+# and a CI matrix, so it must be a plain lowercase slug.
+bad="$TMP/badname/Bad_Name"
+mkdir -p "$bad" && cp "$FIX/image-good/Containerfile" "$bad/" &&
+  sed -e 's/^name: image-good/name: Bad_Name/' "$FIX/image-good/image.yaml" >"$bad/image.yaml"
+expect_fail "check-image: a name that is not a lowercase slug fails rule 2" "rule 2:.*lowercase" scripts/check-image.sh "$bad"
+
 # rule 12: patches and image.yaml deviations must list each other
 dir=$(mutate patch-unlisted image.yaml 's/^consumers: \[\]/consumers: []/')
 mkdir -p "$dir/patches" && : >"$dir/patches/0001-x.patch"
@@ -121,7 +149,8 @@ expect_fail "check-image: missing directory fails" "" scripts/check-image.sh "$T
 # Runs in a copy of the repo with a stub git, so it never touches the network.
 SANDBOX="$TMP/sandbox"
 mkdir -p "$SANDBOX/scripts" "$SANDBOX/images" "$SANDBOX/bin"
-cp scripts/new-image.sh scripts/check-image.sh "$SANDBOX/scripts/"
+cp scripts/new-image.sh scripts/check-image.sh scripts/lib.sh "$SANDBOX/scripts/"
+cp tools.env "$SANDBOX/"
 cp -R images/opencost "$SANDBOX/images/"
 cat >"$SANDBOX/bin/git" <<'STUB'
 #!/usr/bin/env bash

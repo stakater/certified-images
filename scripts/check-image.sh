@@ -5,8 +5,8 @@
 # The rules and their reasons are in docs/planning/dx2-make-verify.md.
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
-YQ_IMAGE=${YQ_IMAGE:-docker.io/mikefarah/yq:4.54.3@sha256:7834187596ad56fd5a81436114e0b0b9dd54c91bb43946d1f7145b2be5f9c3d2}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 
 DIR=${1:?usage: check-image.sh images/<name>}
 DIR=${DIR%/}
@@ -42,6 +42,7 @@ esac
 
 # rule 2: name equals the directory name
 name=$(get .name)
+[[ "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || err 2 "name '$name' must be a lowercase slug: letters, digits and hyphens"
 [ "$name" = "$(basename "$DIR")" ] || err 2 "name '$name' must equal the directory name '$(basename "$DIR")'"
 
 # rule 3: pinned upstream (ADR-003 §1)

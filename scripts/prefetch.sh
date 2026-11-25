@@ -8,9 +8,8 @@
 # This is the only step of the build that uses the network.
 set -euo pipefail
 
-ENGINE=${ENGINE:-docker}
-YQ_IMAGE=${YQ_IMAGE:-docker.io/mikefarah/yq:4.54.3@sha256:7834187596ad56fd5a81436114e0b0b9dd54c91bb43946d1f7145b2be5f9c3d2}
-HERMETO_IMAGE=${HERMETO_IMAGE:-ghcr.io/hermetoproject/hermeto:0.64.0@sha256:b941a5258887a47deb3d741fa4a3183ec7ec3a99c1c4d0be9aa10c1d15fe0b9a}
+# shellcheck source=scripts/lib.sh
+. "$(dirname "$0")/lib.sh"
 # Where the Containerfile copies hermeto-output/ to inside the build stage.
 IN_BUILD_DIR=/tmp/hermeto-output
 
