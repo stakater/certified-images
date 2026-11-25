@@ -56,7 +56,7 @@ anything.*
   Renovate app enabled by a repository admin. Everything else in the Done line
   is met; the `ubi-micro` result is in ADR-004.
 
-**Story P.2 — OpenCost is certified and published** 📝
+**Story P.2 — OpenCost is certified and published** 🔨 *(approved 2026-11-25; planning: [p2-publish](planning/p2-publish.md))*
 *As the MTO team, I want a certified OpenCost image published with signature,
 SBOM and provenance, so that MTO can reference it by digest.*
 - **Done:** the Partner Connect component exists and its ID is in `image.yaml`;
