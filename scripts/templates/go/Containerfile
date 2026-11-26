@@ -1,0 +1,66 @@
+# Stakater build of __NAME__: rebuilt from upstream source on Red Hat UBI.
+# Hermetic (ADR-003): scripts/build-image.sh fetches the pinned commit into ./src,
+# Hermeto-prefetches Go modules into ./hermeto-output, then builds with the network off.
+# Base images are parameterised and digest-pinned (ADR-004).
+
+# Build-stage toolchain: not shipped, pinned by digest all the same (ADR-004).
+# TODO: the Go version must satisfy the `go` directive in upstream's go.mod.
+# renovate: datasource=docker depName=docker.io/library/golang
+ARG GO_TAG=1.27.3@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e
+ARG BASE_REGISTRY=registry.access.redhat.com
+ARG BASE_IMAGE=ubi9/ubi-minimal
+# renovate: datasource=docker depName=registry.access.redhat.com/ubi9/ubi-minimal
+ARG BASE_TAG=latest@sha256:08d4c70f1baf6537a0728656cf7942d561e74a35916509d205b6519861266352
+
+########## build stage (not shipped) ##########
+FROM docker.io/library/golang:${GO_TAG} AS build
+# renovate: datasource=github-tags depName=__REPO__
+ARG UPSTREAM_VERSION=__VERSION__
+ARG UPSTREAM_COMMIT=__COMMIT__
+COPY src/ /src/
+COPY hermeto-output/ /tmp/hermeto-output/
+COPY hermeto.env /tmp/hermeto.env
+# TODO: the directory of the main package, and any -ldflags upstream uses to set its version.
+WORKDIR /src
+# No network here: modules come from the Hermeto cache (GOPROXY/GOMODCACHE set by hermeto.env).
+RUN . /tmp/hermeto.env && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/app .
+
+########## runtime stage (certified) ##########
+FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
+
+# renovate: datasource=github-tags depName=__REPO__
+ARG UPSTREAM_VERSION=__VERSION__
+ARG UPSTREAM_COMMIT=__COMMIT__
+ARG RELEASE=1
+
+# Red Hat certification: required labels (HasRequiredLabel).
+# TODO: summary, description and the licence. scripts/test-image.sh compares
+# name, version, revision and licence with image.yaml.
+LABEL name="stakater/__NAME__" \
+      vendor="Stakater AB" \
+      maintainer="Stakater AB <support@stakater.com>" \
+      version="${UPSTREAM_VERSION}" \
+      release="${RELEASE}" \
+      summary="TODO one-line summary" \
+      description="TODO description. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image." \
+      io.k8s.display-name="Stakater build of __NAME__" \
+      io.k8s.description="TODO (Stakater UBI build)" \
+      org.opencontainers.image.source="https://github.com/__REPO__" \
+      org.opencontainers.image.revision="${UPSTREAM_COMMIT}" \
+      org.opencontainers.image.licenses="TODO" \
+      org.opencontainers.image.version="${UPSTREAM_VERSION}"
+
+# No package installs or updates here: the build has no network. OS fixes
+# arrive through Renovate base-digest bumps (ADR-003 §5, ADR-004).
+
+# Red Hat certification: /licenses (HasLicense). Keep upstream's licence files.
+# TODO: add NOTICE and third-party licence files if upstream ships them.
+COPY --from=build /src/LICENSE /licenses/LICENSE
+
+COPY --from=build --chown=1001:0 --chmod=0555 /out/app /usr/local/bin/app
+
+# Non-root, and usable under an arbitrary UID in group 0 (OpenShift).
+USER 1001
+
+ENTRYPOINT ["/usr/local/bin/app"]
