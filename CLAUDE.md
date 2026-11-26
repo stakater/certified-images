@@ -116,8 +116,12 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
   digest is also copied to Red Hat's registry and submitted for certification
   (`publish.yaml`, ADR-002 rev 5). Never set a component ID without being asked.
 - **Staging is not certified.** An image on GHCR has passed our checks, not Red
-  Hat's. Never call it certified, never make the package public, and never put
-  a GHCR reference in anything shipped to a customer. Never merge, push to `main`, or trigger a
+  Hat's. Never call it certified, and never put a GHCR reference in anything
+  shipped to a customer.
+- **Staging is private unless declared.** `staging.visibility: public` in
+  `image.yaml` is the owner's decision, per image, and only for rebuilds of
+  open-source software. Never add it without being asked, and never for an
+  image of Stakater's own code (ADR-002 rev 6). Never merge, push to `main`, or trigger a
   publish without explicit authorization. Work on a feature branch and open a PR.
 - **Secrets by reference only.** Partner Connect and registry credentials are
   GitHub secrets named from `image.yaml` (`redhat.secretSuffix`). Never read,
@@ -199,7 +203,7 @@ scripts/publish-plan.sh        staging repository, and whether and where to publ
 scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
 scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag
 scripts/copy-image.sh          promotes a digest from staging to Red Hat's registry, unchanged
-scripts/assert-not-public.sh   fails if a staging package can be pulled anonymously
+scripts/assert-visibility.sh   fails if a staging package is more open than its image declares
 scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched

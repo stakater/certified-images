@@ -128,6 +128,7 @@ smoke-port-out-of-range|image.yaml|s/^  port: 8080/  port: 70000/|14
 smoke-path-relative|image.yaml|s#^  path: /healthz#  path: healthz#|14
 smoke-missing|image.yaml|/^smoke:/,/^  args:/d|14
 tags-missing|image.yaml|/^tags:/d|15
+visibility-unknown|image.yaml|s/^consumers: \[\]/staging: {visibility: internal}/|16
 tags-not-slugs|image.yaml|s/^tags: .*/tags: ["Not A Slug"]/|15
 label-missing-in-containerfile|Containerfile|/org.opencontainers.image.base.digest/d|15
 CASES
@@ -465,11 +466,16 @@ staging_not_called_certified() {
   ! printf '%s\n' "$out" | grep '^staging_repository=' | grep -qi certified
 }
 expect_pass "publish-plan: the staging path does not say 'certified'" staging_not_called_certified
+d=$(plan_image placeholder TODO-PARTNER-CONNECT-COMPONENT-ID)
+expect_pass "publish-plan: staging is private unless image.yaml says otherwise" plan_has "$d" "staging_visibility=private"
+printf 'staging:\n  visibility: public\n' >>"$d/image.yaml"
+expect_pass "publish-plan: a declared public image is reported as public" plan_has "$d" "staging_visibility=public"
 
-# ------------------------------------------------------ assert-not-public.sh
-# Staging packages must not be anonymously pullable (ADR-002 rev 5). A stub
-# curl stands in for the registry: STUB_TOKEN_BODY is the token endpoint's
-# answer, STUB_CODE the HTTP status of the anonymous tags request.
+# ------------------------------------------------------ assert-visibility.sh
+# A staging package's real visibility must not be more open than image.yaml
+# declares (ADR-002 rev 6). A stub curl stands in for the registry:
+# STUB_TOKEN_BODY is the token endpoint's answer, STUB_CODE the HTTP status of
+# the anonymous tags request.
 STUB_BIN="$TMP/stub-bin"
 mkdir -p "$STUB_BIN"
 cat >"$STUB_BIN/curl" <<'STUB'
@@ -481,19 +487,36 @@ esac
 exit "${STUB_CURL_RC:-0}"
 STUB
 chmod +x "$STUB_BIN/curl"
-not_public() { # <token body> <http code> [curl rc]
-  STUB_TOKEN_BODY=$1 STUB_CODE=$2 STUB_CURL_RC=${3:-0} PATH="$STUB_BIN:$PATH" \
-    scripts/assert-not-public.sh ghcr.io/stakater/ubi/example
+visibility() { # <declared> <token body> <http code> [curl rc]
+  STUB_TOKEN_BODY=$2 STUB_CODE=$3 STUB_CURL_RC=${4:-0} PATH="$STUB_BIN:$PATH" \
+    scripts/assert-visibility.sh ghcr.io/stakater/ubi/example "$1"
 }
-expect_pass "assert-not-public: anonymous access refused (401) passes" not_public '{"token":"t"}' 401
-expect_pass "assert-not-public: anonymous access denied (403) passes" not_public '{"token":"t"}' 403
-expect_pass "assert-not-public: a registry that gives no anonymous token passes" not_public '{"errors":[{"code":"DENIED"}]}' 401
-expect_pass "assert-not-public: a package that does not exist yet (404) passes" not_public '{"token":"t"}' 404
-expect_fail "assert-not-public: anonymous access allowed (200) fails" "PUBLIC" not_public '{"token":"t"}' 200
-expect_fail "assert-not-public: an unexpected status fails, it is not assumed private" "could not tell" not_public '{"token":"t"}' 500
-expect_fail "assert-not-public: a network failure fails, it is not assumed private" "could not tell" not_public '' 000 7
-expect_fail "assert-not-public: a repository outside ghcr.io is refused" "ghcr.io" \
-  env PATH="$STUB_BIN:$PATH" scripts/assert-not-public.sh quay.io/x/y
+TOK='{"token":"t"}'
+# declared | http code | pass or the text the failure must contain
+while IFS='|' read -r declared code want; do
+  [ -z "$declared" ] && continue
+  if [ "$want" = "pass" ]; then
+    expect_pass "assert-visibility: declared $declared, registry answers $code: passes" visibility "$declared" "$TOK" "$code"
+  else
+    expect_fail "assert-visibility: declared $declared, registry answers $code: fails" "$want" visibility "$declared" "$TOK" "$code"
+  fi
+done <<'CASES'
+private|401|pass
+private|403|pass
+private|404|pass
+private|200|PUBLIC
+private|500|could not tell
+public|200|pass
+public|404|pass
+public|401|pass
+public|500|could not tell
+CASES
+expect_pass "assert-visibility: declared public but actually private is allowed, with a warning" \
+  bash -c "STUB_TOKEN_BODY='$TOK' STUB_CODE=401 PATH='$STUB_BIN':\$PATH scripts/assert-visibility.sh ghcr.io/stakater/ubi/example public 2>&1 | grep -qi 'declared public'"
+expect_fail "assert-visibility: a network failure fails, it is never assumed private" "could not tell" visibility private '' 000 7
+expect_fail "assert-visibility: an unknown declaration is refused" "public or private" visibility internal "$TOK" 401
+expect_fail "assert-visibility: a repository outside ghcr.io is refused" "ghcr.io" \
+  env PATH="$STUB_BIN:$PATH" scripts/assert-visibility.sh quay.io/x/y private
 
 # ------------------------------------------------------------ copy-image.sh
 # The stub prints STUB_OUT for every call; copy-image reads the destination

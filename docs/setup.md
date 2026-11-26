@@ -49,30 +49,34 @@ No secrets are needed: the workflow uses its own token.
    any change that touches the image.
 2. The run's summary shows the staged reference,
    `ghcr.io/stakater/ubi/opencost@sha256:…`, tagged `<upstream-version>-1`.
-3. **Fix the package's visibility.** This repository is public, so a package
-   it creates is **public by default** (seen on the first run, 2026-11-26).
-   Visibility cannot be set from a workflow. As an organisation admin:
+3. **Check the package's visibility matches what the image declares.** Each
+   `image.yaml` declares its staging visibility; private is the default
+   (ADR-002 rev 6). This repository is public, so a package it creates is
+   **public by default**, whatever the image declares. As an organisation admin:
    - Once, for all future images: Organisation settings → Packages → Package
-     creation → untick **Public**. New packages are then created private.
-   - For a package that already exists: Packages → `ubi/<name>` → Package
-     settings → Change visibility → **Private** or **Internal**, then give the
-     teams that need it read access.
+     creation → untick **Public**. New packages are then created private, and
+     an image declared public is made public by hand when it is first staged.
+   - For a package that should be private and is not: Packages → `ubi/<name>`
+     → Package settings → Change visibility → **Private** or **Internal**, then
+     give the teams that need it read access.
 
-   The pipeline checks this itself (`scripts/assert-not-public.sh`): it asks
+   The pipeline checks this itself (`scripts/assert-visibility.sh`): it asks
    the registry with no credentials, before and after each staging push, and
-   fails the run if the package can be pulled anonymously. It cannot prevent a
-   brand-new package from being created public; the organisation setting does.
-4. Verify from your own machine with the README's commands, after
-   `docker login ghcr.io` with a token that has `read:packages`.
+   fails the run if a package is public without its image declaring it. It
+   cannot prevent a brand-new package from being created public; the
+   organisation setting does. Until that setting is changed, **the first push
+   of any private image will expose it** until the run fails a moment later.
+4. Verify from your own machine with the README's commands. For a private
+   image, first `docker login ghcr.io` with a token that has `read:packages`.
 
 | It fails at | Likely cause |
 |---|---|
-| "Stage to GHCR" or "Staged package must not be public", saying the package is PUBLIC | The package's visibility. Fix it as in step 3 above, then re-run |
+| "Stage to GHCR" or "Staged package is not more open than declared", saying the package is PUBLIC | The package is public but its `image.yaml` does not declare that. Make it private as in step 3, or declare it public in a reviewed PR, then re-run |
 | "Stage to GHCR", with a permission error | The organisation does not let workflows create packages, or the package already exists and is not linked to this repository. An org admin grants this repository write access in the package's settings |
 | "Sign and attest the staged image" | The job lacks `id-token: write`, or Sigstore was unreachable |
 
-To pull a staged image into a cluster, the cluster needs a pull secret for
-`ghcr.io` with `read:packages`. Staged images are for testing; nothing shipped
+To pull a private staged image into a cluster, the cluster needs a pull secret
+for `ghcr.io` with `read:packages`. A public one needs none. Staged images are for testing; nothing shipped
 to a customer references them.
 
 ## 2. Enable Renovate
