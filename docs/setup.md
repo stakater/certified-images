@@ -4,6 +4,10 @@ What a person has to do, in order, to take the factory from "builds on pull
 requests" to "publishes certified images". Steps 1 to 3 and 6a are once per
 repository. The rest are once per image.
 
+Staging to GHCR needs none of the Red Hat steps: it works as soon as the
+pipeline is merged (step 1) and is checked in step 1a. Steps 4 to 9 are only
+for publishing to Red Hat.
+
 Nothing here can be done by an agent: it needs repository admin rights, a Red
 Hat Partner Connect login, or a credential.
 
@@ -16,6 +20,7 @@ an issue or a chat.
 | # | Step | Who | Where | Once per |
 |---|---|---|---|---|
 | 1 | Merge the open pipeline PRs | Factory owner | GitHub | repo |
+| 1a | Run the first staging publish, check the GHCR package | Factory owner, org admin | GitHub | repo, then each new image |
 | 2 | Enable Renovate | Repo admin | GitHub | repo |
 | 3 | Protect `main`, add `CODEOWNERS` | Repo admin | GitHub | repo |
 | 4 | Create the component, get its ID | Partner Connect user | Red Hat Partner Connect | image |
@@ -26,13 +31,40 @@ an issue or a chat.
 | 8 | Check the publish run and Partner Connect | Factory team | GitHub, Partner Connect | publish |
 | 9 | Verify from outside CI, record the result | Factory team | Your own machine | first publish |
 
-Do step 6 before step 7. The merge in step 7 is what publishes; if the secrets
-are missing, the run fails at the registry login.
+Steps 6 and 7 can be done in either order. If the component ID is set but a
+secret is missing, the run stages the image to GHCR, skips the Red Hat stage
+and names the missing secret. The first run with both in place publishes to
+Red Hat.
 
 ## 1. Merge the pipeline
 
 The publish workflow must be on `main` before anything else matters. Merging it
 publishes nothing: an image is only published once it has a component ID.
+
+## 1a. First staging publish to GHCR
+
+No secrets are needed: the workflow uses its own token.
+
+1. GitHub → Actions → `publish` → Run workflow → image `opencost`. Or merge
+   any change that touches the image.
+2. The run's summary shows the staged reference,
+   `ghcr.io/stakater/ubi/opencost@sha256:…`, tagged `<upstream-version>-1`.
+3. **Check the package's visibility.** GitHub → the `stakater` organisation →
+   Packages → `ubi/opencost` → Package settings. It must **not** be public. Set
+   it so the organisation can read it (Internal, or Private with the teams that
+   need it). Visibility cannot be set from the workflow, so this is checked by
+   hand for each new image.
+4. Verify from your own machine with the README's commands, after
+   `docker login ghcr.io` with a token that has `read:packages`.
+
+| It fails at | Likely cause |
+|---|---|
+| "Stage to GHCR", with a permission error | The organisation does not let workflows create packages, or the package already exists and is not linked to this repository. An org admin grants this repository write access in the package's settings |
+| "Sign and attest the staged image" | The job lacks `id-token: write`, or Sigstore was unreachable |
+
+To pull a staged image into a cluster, the cluster needs a pull secret for
+`ghcr.io` with `read:packages`. Staged images are for testing; nothing shipped
+to a customer references them.
 
 ## 2. Enable Renovate
 
@@ -167,8 +199,8 @@ redhat:
 ```
 
 `make verify` checks the format. The PR's CI run still publishes nothing. When
-the PR is merged, the `publish` workflow runs for that image. **This merge is
-the publish.**
+the PR is merged, the `publish` workflow runs for that image: it stages to
+GHCR, and if the secrets from step 6 exist it also publishes to Red Hat.
 
 ## 8. Check the publish run
 
@@ -177,8 +209,9 @@ In GitHub → Actions → `publish`, the run's summary shows the tag
 
 | It fails at | Likely cause |
 |---|---|
-| "Log in to Red Hat's partner registry" | A registry secret is missing, misnamed or wrong |
-| "Release number" | The registry refused to list tags. Check the robot account can read the repository |
+| "Log in to Red Hat's partner registry" | A registry secret is wrong. (A missing one skips the stage with a warning instead) |
+| "Promote the staged digest to Red Hat" | The robot account cannot push, the tag already exists there, or the digest changed in transit |
+| "Release number" | GHCR refused to list the staging repository's tags |
 | "Sign the digest and attest the SBOMs" | The job lacks `id-token: write`, or Sigstore was unreachable |
 | "Submit to Red Hat for certification" | `RH_PYXIS_TOKEN` is missing, revoked or wrong, the component ID is wrong, or the image failed a certification check (the log names it) |
 

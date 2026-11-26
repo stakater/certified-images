@@ -1,12 +1,14 @@
-# Publishes images: push to Red Hat's partner registry, sign, attest, submit
-# for certification. OUTWARD-FACING.
+# Publishes images. OUTWARD-FACING.
+#   Stage 1, every image: push to GHCR (ghcr.io/stakater/ubi/<name>), sign, attest.
+#   Stage 2, when the image is ready for it: copy the same digest to Red Hat's
+#   partner registry, sign, attest, submit for certification.
 #
 # Runs when a merge to main touches an image, for the images it touched. Run it
 # by hand for one image when the pipeline itself changed and the image needs a
 # new release (ADR-002 rule 3).
 #
-# An image without a Partner Connect component ID is built and checked but not
-# published; the run says so.
+# An image without a Partner Connect component ID, or whose Red Hat secrets are
+# missing, is staged to GHCR only; the run says so (ADR-002 rev 5).
 name: publish
 
 on:
@@ -65,6 +67,7 @@ jobs:
         dir: ${{ fromJSON(needs.changed.outputs.dirs) }}
     permissions:
       contents: read
+      packages: write # push to GHCR (staging)
       id-token: write # keyless signing and provenance
       attestations: write # build provenance
     uses: ./.github/workflows/build-certify.yaml

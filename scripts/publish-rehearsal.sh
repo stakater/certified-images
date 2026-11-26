@@ -3,7 +3,8 @@
 #   scripts/publish-rehearsal.sh <local-ref> images/<name>
 #
 # Against a throwaway local registry it runs the real scripts twice: list tags,
-# compute the release, push, read back the digest. The first push must be
+# compute the release, push, read back the digest, then promote that digest to
+# a second repository (staging -> certified, ADR-002 rev 5). The first push must be
 # release 1 and the second release 2. Signing, attestations and submission to
 # Red Hat are NOT rehearsed: they need real credentials and write to public
 # services.
@@ -60,6 +61,16 @@ for expected in 1 2; do
   digest=$("$ROOT/scripts/push-image.sh" "$REF" "$REPO" "$VERSION-$release" 2>/dev/null)
   "$ENGINE" pull -q "$digest" >/dev/null
   echo "ok   - release $release pushed as $VERSION-$release and pulled back by digest"
+
+  # Promote the staged digest to a second repository, as the Red Hat stage does.
+  promoted=$(REGISTRY_INSECURE=1 TOOL_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
+    "$ROOT/scripts/copy-image.sh" "$REG:5000/rehearsal/$NAME@${digest##*@}" \
+    "$REG:5000/rehearsal-promoted/$NAME" "$VERSION-$release" 2>/dev/null)
+  [ "${promoted##*@}" = "${digest##*@}" ] || {
+    echo "FAIL - promoted digest ${promoted##*@} differs from staged ${digest##*@}" >&2
+    exit 1
+  }
+  echo "ok   - release $release promoted to a second repository with the same digest"
 done
 # The tag just pushed must now be refused.
 if REGISTRY_INSECURE=1 TOOL_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
@@ -68,4 +79,4 @@ if REGISTRY_INSECURE=1 TOOL_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
   exit 1
 fi
 echo "ok   - an existing tag is refused"
-echo "publish-rehearsal: release numbering and push work (signing and submission not rehearsed)"
+echo "publish-rehearsal: release numbering, push and promotion by digest work (signing and submission not rehearsed)"

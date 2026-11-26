@@ -443,6 +443,44 @@ expect_pass "publish-plan: suffix comes from image.yaml" plan_has "$d" "suffix=I
 d=$(plan_image malformed not-an-id)
 expect_fail "publish-plan: a malformed component ID fails" "componentId" scripts/publish-plan.sh "$d"
 
+# staging registry (ADR-002 rev 5): every image, component ID or not
+d=$(plan_image placeholder TODO-PARTNER-CONNECT-COMPONENT-ID)
+expect_pass "publish-plan: an image without a component ID still has a staging repository" \
+  plan_has "$d" "staging_repository=ghcr.io/stakater/ubi/image-good"
+d=$(plan_image real 0123456789abcdef01234567)
+expect_pass "publish-plan: an image with a component ID has the same staging repository" \
+  plan_has "$d" "staging_repository=ghcr.io/stakater/ubi/image-good"
+# An image in staging has passed our checks, not Red Hat's.
+staging_not_called_certified() {
+  local out
+  out=$(scripts/publish-plan.sh "$d") || return 1
+  ! printf '%s\n' "$out" | grep '^staging_repository=' | grep -qi certified
+}
+expect_pass "publish-plan: the staging path does not say 'certified'" staging_not_called_certified
+
+# ------------------------------------------------------------ copy-image.sh
+# The stub prints STUB_OUT for every call; copy-image reads the destination
+# digest from it after the copy. D1/D2 are two different digests.
+D1=sha256:1111111111111111111111111111111111111111111111111111111111111111
+D2=sha256:2222222222222222222222222222222222222222222222222222222222222222
+copy_image() { # <rc> <engine output> <src-ref>
+  STUB_RC=$1 STUB_OUT=$2 ENGINE="$STUB_ENGINE" REGISTRY_AUTH_FILE=/nonexistent \
+    scripts/copy-image.sh "$3" dst.example/repo v1.2.3-1
+}
+copy_prints() {
+  local out
+  out=$(copy_image "$@" 2>/dev/null) || return 1
+  [ "$out" = "dst.example/repo@$D1" ] || {
+    echo "got '$out'"
+    return 1
+  }
+}
+expect_pass "copy-image: an unchanged digest prints the destination reference" \
+  copy_prints 0 "$D1" "src.example/repo@$D1"
+expect_fail "copy-image: a digest that changed in transit fails" "digest" copy_image 0 "$D2" "src.example/repo@$D1"
+expect_fail "copy-image: a failed copy fails" "" copy_image 1 "connection refused" "src.example/repo@$D1"
+expect_fail "copy-image: a source without a digest is refused" "digest" copy_image 0 "$D1" "src.example/repo:v1.2.3-1"
+
 dir=$(mutate component-id-malformed image.yaml 's/componentId: .*/componentId: "not-an-id"/')
 expect_fail "check-image: a malformed component ID fails rule 13" "rule 13:" scripts/check-image.sh "$dir"
 dir=$(mutate component-id-real image.yaml 's/componentId: .*/componentId: "0123456789abcdef01234567"/')

@@ -3,9 +3,10 @@
 #   scripts/publish-plan.sh images/<name>
 #
 # Prints key=value lines (also valid for $GITHUB_OUTPUT):
-#   publishable  true | false
+#   publishable  true | false   (to Red Hat; staging does not depend on it)
 #   reason       why not, when false
-#   component_id, suffix, version, repository
+#   staging_repository   where every build is staged (always printed)
+#   component_id, suffix, version, repository   (repository: Red Hat's, when publishable)
 #
 # An image whose redhat.componentId is still the placeholder is not publishable.
 # That is a normal state while Partner Connect is pending, so it is reported,
@@ -15,6 +16,9 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"
 REGISTRY=${PUBLISH_REGISTRY:-quay.io/redhat-isv-containers}
+# Staging (ADR-002 rev 5). "ubi", not "certified": an image here has passed
+# our checks, not Red Hat's.
+STAGING=${STAGING_REGISTRY:-ghcr.io/stakater/ubi}
 
 DIR=${1:?usage: publish-plan.sh images/<name>}
 DIR=${DIR%/}
@@ -31,6 +35,7 @@ version=$(get .upstream.version)
 
 echo "suffix=$suffix"
 echo "version=$version"
+echo "staging_repository=$STAGING/$(get .name)"
 case "$id" in
   "" | TODO*)
     echo "publishable=false"
