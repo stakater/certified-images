@@ -36,13 +36,13 @@ Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost:v1.121.5-1` (`sha256:efce362b…`). ⚠️ The package was created **public**; an org admin must make it private ([docs/setup.md](docs/setup.md), step 1a) | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged as `v1.121.5-1`; later releases follow each merge | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
 
 ### Two registries
 
 | Registry | What it holds | Who uses it |
 |---|---|---|
-| `ghcr.io/stakater/ubi/<name>` (staging) | Every build that passes the checks. Visible to the Stakater organisation only | Stakater teams, for testing |
+| `ghcr.io/stakater/ubi/<name>` (staging) | Every build that passes the checks. Private by default; an image may declare `staging.visibility: public` in `image.yaml` (open-source rebuilds only) | Stakater teams, for testing |
 | `registry.connect.redhat.com/stakater/<name>` (certified) | The same digest, after Red Hat certification | Anything shipped to a customer. A certified operator bundle must reference this one, never GHCR |
 
 How we work: [docs/method.md](docs/method.md).
@@ -322,7 +322,7 @@ The full procedure, with what each CI failure means, is in `.claude/skills/add-i
 ⚠️ **Not run yet.** Nothing is signed until the first publish. These are the commands the first publish must be checked with, from a machine outside CI: first against the staging reference, later against Red Hat's public pull spec. They become documentation only after that.
 
 ```
-REF=<registry>/<repository>@sha256:<digest>   # staging: ghcr.io/stakater/ubi/<name>@sha256:...  (log in first: the package is not public)
+REF=<registry>/<repository>@sha256:<digest>   # staging: ghcr.io/stakater/ubi/<name>@sha256:...  (log in first if the image's staging is private)
 ID='^https://github.com/stakater/certified-images/\.github/workflows/build-certify\.yaml@refs/heads/main$'
 ISSUER=https://token.actions.githubusercontent.com
 
@@ -343,7 +343,7 @@ Checked by running it (2026-11-25):
 - All tool images and GitHub actions are pinned by digest or commit.
 - **What the smoke test found about OpenCost** (2026-11-26). It runs as an arbitrary UID with a read-only root filesystem and no capabilities. Inside a cluster it exits at start-up unless it has read access to the Kubernetes API and a Prometheus that already reports a running scrape job. It tries to create `/var/configs` and falls back to memory when it cannot. A product deploying it needs RBAC, a reachable Prometheus, and a writable volume at `/var/configs` if that state should persist.
 - Staging to GHCR (2026-11-26): the workflow token can create `ghcr.io/stakater/ubi/<name>`; push, keyless signing, SBOM attestations and provenance all ran. `gh attestation verify` from outside CI confirms the provenance was signed by `build-certify.yaml` on `main`.
-- **A package created by this public repository is public by default.** The pipeline now fails if a staging package can be pulled anonymously.
+- **A package created by this public repository is public by default.** Each image declares its staging visibility (private unless stated), and the pipeline fails if a package is more open than declared.
 
 Still unverified:
 - [ ] **That an image works on OpenShift itself.** The smoke test runs on a local Kubernetes cluster with restricted pod security, which approximates OpenShift's `restricted-v2`. It does not exercise OpenShift's SCC admission, its UID ranges, SELinux or FIPS mode. Level 2 of story P.2b runs the same test on a real OpenShift cluster.

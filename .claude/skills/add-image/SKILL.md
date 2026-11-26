@@ -58,6 +58,9 @@ In `image.yaml`:
   Keep fixtures minimal: the test shows the image runs and serves, not that it
   does its job.
 - `consumers`: the product(s) from admission (d).
+- Do not add `staging.visibility: public`. Staging is private by default;
+  making an image public is the owner's decision. If the owner asks for it,
+  it is only for rebuilds of open-source software.
 - Leave `redhat.componentId` as the placeholder. A person fills it in step 6.
 
 In the Containerfile:

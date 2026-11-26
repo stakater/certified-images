@@ -146,10 +146,12 @@ jobs:
         if: ${{ steps.mode.outputs.stage == 'true' }}
         env:
           STAGING: ${{ steps.plan.outputs.staging_repository }}
+          VISIBILITY: ${{ steps.plan.outputs.staging_visibility }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
-          # Never add to a package that anyone can pull (ADR-002 rev 5).
-          scripts/assert-not-public.sh "$STAGING"
+          # Never add to a package that is more open than the image declares
+          # (ADR-002 rev 6).
+          scripts/assert-visibility.sh "$STAGING" "$VISIBILITY"
           # A release tag is never overwritten (ADR-002 rule 3).
           scripts/assert-tag-free.sh "$STAGING" "$TAG"
           ref=$(scripts/push-image.sh "localhost/stakater/$(basename "$IMAGE_DIR"):build" "$STAGING" "$TAG")
@@ -157,13 +159,14 @@ jobs:
           echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"
 
       # A new package is created with the organisation's default visibility,
-      # which a workflow cannot set. If that default is public, fail here, loudly,
-      # and do not sign, attest or promote.
-      - name: Staged package must not be public
+      # which a workflow cannot set. If that is more open than the image
+      # declares, fail here, loudly, and do not sign, attest or promote.
+      - name: Staged package is not more open than declared
         if: ${{ steps.mode.outputs.stage == 'true' }}
         env:
           STAGING: ${{ steps.plan.outputs.staging_repository }}
-        run: scripts/assert-not-public.sh "$STAGING"
+          VISIBILITY: ${{ steps.plan.outputs.staging_visibility }}
+        run: scripts/assert-visibility.sh "$STAGING" "$VISIBILITY"
 
       - name: Install cosign
         if: ${{ steps.mode.outputs.stage == 'true' }}

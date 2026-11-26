@@ -41,6 +41,8 @@ smoke:
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
   secretSuffix: ${SUFFIX}
+# Staged to ghcr.io/stakater/ubi/${NAME}, private by default. To make it public,
+# add 'staging: {visibility: public}' in a reviewed PR (ADR-002 rev 6).
 consumers: []
 EOF
 

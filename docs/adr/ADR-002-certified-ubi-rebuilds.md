@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 5, 2026-11-26. Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 6, 2026-11-26. Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -18,8 +18,10 @@ One repository, `stakater/certified-images`, with one pipeline that rebuilds adm
 
 | Registry | Path | What it is for | Who may reference it |
 |---|---|---|---|
-| GHCR (staging) | `ghcr.io/stakater/ubi/<name>` | Every build, as soon as it passes the checks. Lets products test before certification, and keeps the pipeline exercised while Red Hat's manual steps are pending | Stakater teams, in test and development. Visible to the organisation only |
+| GHCR (staging) | `ghcr.io/stakater/ubi/<name>` | Every build, as soon as it passes the checks. Lets products test before certification, and keeps the pipeline exercised while Red Hat's manual steps are pending | Stakater teams, in test and development. Private unless the image declares otherwise (below) |
 | Red Hat (certified) | `registry.connect.redhat.com/stakater/<name>` | The same digest, after certification | Anything shipped to a customer. A certified operator bundle must reference this one |
+
+**Staging visibility is declared per image, and private is the default.** `image.yaml` may set `staging.visibility: public`. That is a decision made in a reviewed PR, and it is only for rebuilds of permissively licensed open-source software, which anyone could build themselves. An image of Stakater's own code (ADR-006) is never public in staging. The pipeline asks the registry anonymously before and after each push and fails if a package is more open than its image declares. (Revision 5 said organisation-only for everything. The first staged package was created public, the owner chose to keep that image public, and a blanket rule would then either block it or leave nothing protecting the images that must stay private.)
 
 The staging path says `ubi`, not `certified`: an image there has passed our checks, not Red Hat's. The image is copied to Red Hat by digest, so what was staged and tested is byte for byte what is certified.
 
@@ -73,6 +75,7 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 ## Consequences
 - \+ Air gap and certification are solved once and reused across MTO, SCO and Reloader.
 - \+ Staging removes Red Hat's manual gates from the critical path: an image is usable for testing, and the outward-facing pipeline is exercised, before its component, secrets or export approval exist.
+- − A public staging image can be pulled by anyone before it is certified, and stays pullable if it later fails. Staging is for testing; nothing we tell customers points at it.
 - − Two references to the same image invite the wrong one being shipped. The rule is simple and must be enforced in product repos: customer-facing manifests reference Red Hat's registry only.
 - \+ CVE, SBOM, signing and provenance claims become verifiable, which is a sellable sovereign-supply-chain story.
 - \+ The SLA is measurable: the gate and the scheduled re-scan cover the same severities the SLA promises.
@@ -83,7 +86,7 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 - − Two registry secrets per image still have to be added by hand. One API key means the certification account is a single point of failure, hence the dedicated account and the rotation runbook.
 
 ## Open questions
-- Public distribution on GHCR is not decided. It is a licensing and export question, separate from this ADR. Until it is decided the packages are not public.
+- A public staging package makes Stakater a public distributor of that software, uncertified builds included. Licence files ship in the image; whether export rules add anything is a question for legal, per image.
 - ⚠️ Can the per-component registry credentials be fetched with the API key, leaving one secret in total? Not confirmed: no such endpoint was found in Red Hat's public API docs or their pipeline code (checked 2026-11-26). Try it against the first real component before relying on it (rule 5).
 - ⚠️ That one API key covers every component is Red Hat's documented model and has not yet been exercised by this pipeline; the first publish of a second image confirms it.
 - ⚠️ Whether Red Hat ships a Dex image we are entitled to use as an operand (rule 1a). Check before admitting Dex.

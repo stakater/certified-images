@@ -179,5 +179,13 @@ for label in name vendor maintainer version release summary description \
   grep -Eq "^(LABEL)?[[:space:]]+${label//./\\.}=" "$CF" || err 15 "Containerfile does not set the label '$label' (ADR-009)"
 done
 
+# rule 16: staging visibility is public or private; absent means private
+# (ADR-002 rev 6). Declaring public is a decision, made in a reviewed PR.
+visibility=$(get .staging.visibility)
+case "$visibility" in
+  "" | public | private) ;;
+  *) err 16 "staging.visibility must be 'public' or 'private' (default private), got '$visibility'" ;;
+esac
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

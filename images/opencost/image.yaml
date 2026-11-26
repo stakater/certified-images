@@ -63,5 +63,11 @@ redhat:
   # (the Partner Connect API key is one shared secret for all images)
   secretSuffix: OPENCOST
 
+# Staging visibility on GHCR (ADR-002 rev 6). Public on purpose, decided by the
+# owner on 2026-11-26: this is a rebuild of Apache-2.0 software on UBI, which
+# may be redistributed. Images of Stakater's own code must stay private.
+staging:
+  visibility: public
+
 consumers:
   - multi-tenant-operator   # CSV relatedImages + RELATED_IMAGE_OPENCOST, by digest
