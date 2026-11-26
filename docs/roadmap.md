@@ -81,7 +81,7 @@ images without waiting for Red Hat's manual steps.*
   against it from outside CI; the package is confirmed not public; the Red Hat
   stage receives the same digest by copy; ADR-002 rev 5 is merged.
 
-**Story P.2b — an image is proven to run on OpenShift before it is promoted** 📝
+**Story P.2b — an image is proven to run on OpenShift before it is promoted** 🔨 *(approved 2026-11-26, level 1 first; planning: [p2b-smoke-test](planning/p2b-smoke-test.md))*
 *As a product team, I want every staged image deployed on a real OpenShift
 cluster under the default restricted security context and checked for doing its
 job, so that "certified" also means "works", and a broken image is never
