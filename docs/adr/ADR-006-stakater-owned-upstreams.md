@@ -23,5 +23,8 @@ template-operator-v2, dex-config-operator, MTO components and Reloader are **our
 - − The reusable workflow is an API from day one; breaking changes need a new major tag.
 - − Verification commands must name the workflow, not only the repo: `cosign` with an identity that matches the reusable workflow at a release tag, and `gh attestation verify --signer-workflow stakater/certified-images/.github/workflows/<file>`. The README's current regex pins `@refs/heads/main` and must change when the workflow is written (story P.1).
 
+## Exception: incubating here first
+Reloader v2 is built from `images/reloader` in this repository, by the owner's decision of 2026-11-26, although it is Stakater's own code. The pipeline cannot yet be called from another repository, and waiting for that would have delayed the first own-product image. It moves to the Reloader repository, with its `Containerfile.ubi`, once the external-caller story is done. Until then the cost this ADR warns about applies: the code and the recipe that ships it live in different places.
+
 ## Status of implementation
 Nothing exists yet. The reusable workflow is written in story P.1. The first external caller (template-operator-v2) is a later story; this ADR is accepted when that caller's team has reviewed it.
