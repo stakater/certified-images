@@ -4,7 +4,10 @@
 # repository; it starts here by the owner's decision (2026-11-26) and moves
 # there once the pipeline can be called from another repository.
 kind: container
-name: reloader
+# Named after its Red Hat repository, stakater/reloader-operator, so the image
+# says the same thing wherever it is pulled from. The binary and the upstream
+# project are still called Reloader.
+name: reloader-operator
 displayName: Stakater build of Reloader
 summary: "Reloader: rolling upgrades when ConfigMaps or Secrets change, on Red Hat UBI"
 description: >-
@@ -40,7 +43,8 @@ smoke:
   path: /readyz
 
 redhat:
-  # Partner Connect container component "Reloader (operator) container"
+  # Partner Connect container component "Reloader Operator Container".
+  # Public pull spec after certification: registry.connect.redhat.com/stakater/reloader-operator
   componentId: "6af9776fa950dc6dbfa4d693"
   # Push target: quay.io/redhat-isv-containers/6af9776fa950dc6dbfa4d693
 

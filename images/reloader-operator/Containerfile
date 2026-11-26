@@ -51,7 +51,7 @@ ARG BASE_IMAGE
 # Labels (ADR-009). scripts/check-labels.sh checks every one against image.yaml
 # and the build. Without them the image would inherit UBI's build date, commit,
 # URL and tags.
-LABEL name="stakater/reloader" \
+LABEL name="stakater/reloader-operator" \
       vendor="Stakater AB" \
       maintainer="Stakater AB <support@stakater.com>" \
       version="${UPSTREAM_VERSION}" \
@@ -69,13 +69,13 @@ LABEL name="stakater/reloader" \
       org.opencontainers.image.source="https://github.com/stakater/certified-images" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.url="https://github.com/stakater/certified-images/tree/main/images/reloader" \
+      org.opencontainers.image.url="https://github.com/stakater/certified-images/tree/main/images/reloader-operator" \
       org.opencontainers.image.base.name="${BASE_REGISTRY}/${BASE_IMAGE}" \
       org.opencontainers.image.base.digest="${BASE_DIGEST}" \
       vcs-ref="${VCS_REF}" \
       vcs-type="git" \
       build-date="${BUILD_DATE}" \
-      url="https://github.com/stakater/certified-images/tree/main/images/reloader" \
+      url="https://github.com/stakater/certified-images/tree/main/images/reloader-operator" \
       com.stakater.upstream.repo="https://github.com/stakater/Reloader" \
       com.stakater.upstream.version="${UPSTREAM_VERSION}" \
       com.stakater.upstream.commit="${UPSTREAM_COMMIT}"

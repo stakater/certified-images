@@ -37,7 +37,7 @@ Images:
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
 | `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
-| `reloader` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader`, public by declaration | Component `6af9776fa950dc6dbfa4d693` set; not published: secrets pending |
+| `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | `registry.connect.redhat.com/stakater/reloader-operator`. Component `6af9776fa950dc6dbfa4d693` set; not published: its registry key is not in `RH_REGISTRY_KEYS` yet |
 
 ### Two registries
 
