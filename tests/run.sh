@@ -429,6 +429,22 @@ expect_pass "pyxis-probe: and scrubs the API key out of that explanation" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 401 '$ERR' | grep -q PROBESECRET"
 expect_pass "pyxis-probe: on success it still shows no values" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$BODY' | grep -qE 'SECRETVALUE|robot-user'"
+# An answer with no fields must say so, and say what kind of thing it is.
+expect_pass "pyxis-probe: an empty object is reported as empty, not as nothing" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '{}' | grep -q 'empty object'"
+expect_pass "pyxis-probe: an empty list is reported as empty" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '[]' | grep -q 'empty array'"
+expect_pass "pyxis-probe: an empty body is reported as empty" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '' | grep -q 'empty body'"
+expect_pass "pyxis-probe: fields that hold nothing are still listed" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '{\"registry_credentials\":{},\"docker_config_json\":null}' | grep -q 'registry_credentials  (object, empty)'"
+# A few settings describe the component and are not secrets. Their values help
+# check it was created correctly. Everything else stays names-only.
+SETTINGS='{"name":"Reloader (operator) container","certification_status":"In Progress","container":{"repository_namespace":"stakater","repository_name":"reloader","os_content_type":"Red Hat Universal Base Image (UBI)","distribution_method":"rhcc","password":"hunter2-SECRETVALUE"},"contacts":[{"email_address":"person@example.com"}]}'
+expect_pass "pyxis-probe: shows the component's non-secret settings" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$SETTINGS' | grep -q 'container.repository_name = reloader'"
+expect_pass "pyxis-probe: shows nothing outside that short list" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$SETTINGS' | grep -qE 'SECRETVALUE|person@example.com'"
 expect_fail "pyxis-probe: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/pyxis-probe.sh "$CID"
 expect_fail "pyxis-probe: refuses a malformed component ID" "component" rh env RH_PYXIS_TOKEN=t scripts/pyxis-probe.sh not-an-id
 
