@@ -3,11 +3,10 @@
 #   scripts/rh-registry-login.sh <component-id>
 #
 # No secret is named per image (ADR-002 rev 7). The username is derived from
-# the component ID. The registry key comes from, in order:
-#   1. Red Hat's API, with the shared RH_PYXIS_TOKEN. NOT IMPLEMENTED YET: it
-#      is not confirmed that the API returns registry credentials.
-#      scripts/pyxis-probe.sh answers that; see docs/setup.md step 6.
-#   2. RH_REGISTRY_KEYS: one secret, a JSON object {"<component-id>": "<key>"}.
+# the component ID. The registry key comes from:
+#   RH_REGISTRY_KEYS: one secret, a JSON object {"<component-id>": "<key>"}.
+# Fetching the key from Red Hat's API with RH_PYXIS_TOKEN was tried and is not
+# possible: the API does not return it (docs/setup.md, step 6c).
 #
 # Exit status:
 #   0  logged in

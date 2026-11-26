@@ -188,20 +188,24 @@ password manager** and paste the whole object each time.
 An image whose component has no entry is not an error: the run stages it to
 GHCR, skips the Red Hat stage, and names the missing component ID.
 
-### 6c. Can `RH_REGISTRY_KEYS` go away?
+### 6c. Why `RH_REGISTRY_KEYS` cannot be fetched instead
 
-Possibly. If Red Hat's API returns a component's registry credentials given
-`RH_PYXIS_TOKEN`, the pipeline can fetch each key itself and the repository
-needs one secret in total. That is not confirmed, but it looks likely: the
-API has a `/secrets` endpoint per component (it answers "authentication
-required" to an invalid key, where a made-up path answers "not found"). What
-it returns is unknown. To find out, once `RH_PYXIS_TOKEN` exists:
+Checked on 2026-11-26 with a working API key, using the `pyxis-probe` workflow
+against the Reloader component. Red Hat's API has a per-component `/secrets`
+endpoint, and the key may call it, but it holds one field,
+`docker_config_json`, and it was empty. Nothing in the component record or in
+that endpoint carries the registry key Red Hat issues for pushing. So the key
+has to be copied from Partner Connect once per component, into this one secret.
 
-GitHub → Actions → `pyxis-probe` → Run workflow → image `reloader`.
+⚠️ Read of that field: it looks like a credential a partner *gives* Red Hat,
+for pulling from the partner's own registry, not one Red Hat hands out. That
+interpretation is from memory of Red Hat's pipeline, not from their docs.
 
-It prints the HTTP status and the **names** of the fields the API returns,
-never a value. If credentials are there, the fetch gets implemented and this
-secret is retired.
+The probe stays useful: it shows a component's settings as Red Hat has them
+(name, status, base type, repository name), which is the quickest way to check
+a new component was created correctly.
+
+GitHub → Actions → `pyxis-probe` → Run workflow → the image name.
 
 ### Where they go
 
