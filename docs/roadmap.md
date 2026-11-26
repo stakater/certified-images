@@ -71,6 +71,16 @@ SBOM and provenance, so that MTO can reference it by digest.*
   repository secrets, then the merge that sets the ID, then verification from
   outside CI.
 
+**Story P.2a — every image is published to GHCR as a staging registry** 🔨 *(approved 2026-11-26; planning: [p2a-ghcr-staging](planning/p2a-ghcr-staging.md))*
+*As a product team, I want every image that passes the checks pushed, signed and
+attested to a registry Stakater controls, so that we can test it and keep adding
+images without waiting for Red Hat's manual steps.*
+- **Done:** a merge that touches an image stages it to
+  `ghcr.io/stakater/ubi/<name>` with a `<version>-<release>` tag, a signature,
+  two SBOM attestations and provenance; the README's verify commands succeed
+  against it from outside CI; the package is confirmed not public; the Red Hat
+  stage receives the same digest by copy; ADR-002 rev 5 is merged.
+
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
 mirror, so that showback works without internet access.*

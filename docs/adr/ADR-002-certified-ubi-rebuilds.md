@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 4, 2026-11-26. Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 5, 2026-11-26. Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -13,6 +13,15 @@ MTO needs this now. SCO needs it for many Crossplane providers and functions. Re
 
 ## Decision
 One repository, `stakater/certified-images`, with one pipeline that rebuilds admitted upstreams **from source** on Red Hat UBI, certifies them in Partner Connect, and publishes them with SBOM, signatures and provenance.
+
+**Two registries, two purposes.** Every build is first published to a staging registry we control, then promoted to Red Hat's:
+
+| Registry | Path | What it is for | Who may reference it |
+|---|---|---|---|
+| GHCR (staging) | `ghcr.io/stakater/ubi/<name>` | Every build, as soon as it passes the checks. Lets products test before certification, and keeps the pipeline exercised while Red Hat's manual steps are pending | Stakater teams, in test and development. Visible to the organisation only |
+| Red Hat (certified) | `registry.connect.redhat.com/stakater/<name>` | The same digest, after certification | Anything shipped to a customer. A certified operator bundle must reference this one |
+
+The staging path says `ubi`, not `certified`: an image there has passed our checks, not Red Hat's. The image is copied to Red Hat by digest, so what was staged and tested is byte for byte what is certified.
 
 **Why from source.** Certification only requires a UBI base, so re-layering upstream's binary would pass. We build from source because it lets us fix vulnerabilities upstream has not fixed yet (rule 2), and because the SBOM and provenance then describe a build we ran, not one we trust.
 
@@ -44,8 +53,8 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
    - a bump of a dependency to a version that fixes the vulnerability.
 
    Each deviation is recorded in `image.yaml`, offered upstream as a PR, and removed when upstream ships the fix. No other patches: no features, no behaviour changes, no backports.
-3. **Naming and versions.** "Stakater build of <Project>"; registry path `stakater/<name>`. Keep upstream LICENSE/NOTICE in `/licenses`. Don't use upstream logos or marks.
-   Tags are `<upstream-version>-<release>`, e.g. `v1.121.5-3`. `release` starts at 1, goes up by one on every rebuild of the same upstream version (base-digest bump, deviation, pipeline change), and resets to 1 on an upstream bump. This is the RPM and Red Hat convention. Tags are for people; consumers still pin the digest.
+3. **Naming and versions.** "Stakater build of <Project>"; registry path `stakater/<name>` at Red Hat and `stakater/ubi/<name>` in staging. Keep upstream LICENSE/NOTICE in `/licenses`. Don't use upstream logos or marks.
+   Tags are `<upstream-version>-<release>`, e.g. `v1.121.5-3`. `release` starts at 1, goes up by one on every rebuild of the same upstream version (base-digest bump, deviation, pipeline change), and resets to 1 on an upstream bump. This is the RPM and Red Hat convention. Tags are for people; consumers still pin the digest. The staging registry is the single source of release numbers, and a release has the same tag in both registries. A release tag is never overwritten.
 4. **Patch SLA.** Fixable CRITICAL vulnerabilities within 7 days, fixable HIGH within 30 days; upstream minor releases within 30 days.
    - The clock starts on the day a fix is available, in UBI or in upstream, whichever applies.
    - The CVE gate (ADR-008) fails on fixable CRITICAL **and** HIGH.
@@ -63,6 +72,8 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 
 ## Consequences
 - \+ Air gap and certification are solved once and reused across MTO, SCO and Reloader.
+- \+ Staging removes Red Hat's manual gates from the critical path: an image is usable for testing, and the outward-facing pipeline is exercised, before its component, secrets or export approval exist.
+- − Two references to the same image invite the wrong one being shipped. The rule is simple and must be enforced in product repos: customer-facing manifests reference Red Hat's registry only.
 - \+ CVE, SBOM, signing and provenance claims become verifiable, which is a sellable sovereign-supply-chain story.
 - \+ The SLA is measurable: the gate and the scheduled re-scan cover the same severities the SLA promises.
 - − Every admitted image is a permanent patching commitment; the admission rule must keep the set small.
@@ -72,6 +83,7 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 - − Two registry secrets per image still have to be added by hand. One API key means the certification account is a single point of failure, hence the dedicated account and the rotation runbook.
 
 ## Open questions
+- Public distribution on GHCR is not decided. It is a licensing and export question, separate from this ADR. Until it is decided the packages are not public.
 - ⚠️ Can the per-component registry credentials be fetched with the API key, leaving one secret in total? Not confirmed: no such endpoint was found in Red Hat's public API docs or their pipeline code (checked 2026-11-26). Try it against the first real component before relying on it (rule 5).
 - ⚠️ That one API key covers every component is Red Hat's documented model and has not yet been exercised by this pipeline; the first publish of a second image confirms it.
 - ⚠️ Whether Red Hat ships a Dex image we are entitled to use as an operand (rule 1a). Check before admitting Dex.
