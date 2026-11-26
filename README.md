@@ -285,7 +285,7 @@ Staging to GHCR needs no secrets. The Red Hat stage needs **two repository secre
 | `RH_PYXIS_TOKEN` | Partner Connect API key for submitting certification results. One key covers every component |
 | `RH_REGISTRY_KEYS` | One JSON object holding each component's registry key, keyed by component ID. The username is derived from the component ID |
 
-`RH_REGISTRY_KEYS` may turn out to be unnecessary: if Red Hat's API returns registry credentials given the API key, the pipeline can fetch them. The `pyxis-probe` workflow answers that once `RH_PYXIS_TOKEN` exists.
+Fetching the registry keys from Red Hat's API with the API key was tried on 2026-11-26 and is not possible; `RH_REGISTRY_KEYS` is how they are held. The `pyxis-probe` workflow shows a component's settings as Red Hat has them, which is useful for checking a new component.
 
 **[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add the two secrets once; then per image, create the component, add its registry key as one entry in `RH_REGISTRY_KEYS`, and merge the PR that sets the component ID. That merge is the publish.
 
