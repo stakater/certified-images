@@ -73,6 +73,19 @@ Don't copy: apko/Wolfi as the runtime base. Red Hat certification needs UBI.
 - OpenShift Software Certification Policy Guide: docs.redhat.com/en/documentation/red_hat_software_certification ✅
 - Preflight: github.com/redhat-openshift-ecosystem/openshift-preflight ⚠️ verify the `--certification-component-id` flag name on the pinned preflight version (older releases used `--certification-project-id`).
 
+## 8. Staging and promotion, and running the image (added 2026-11-26)
+| What we copy | Where | Used in |
+|---|---|---|
+| Build once, then **promote the same digest** between registries by copying the manifest, never by rebuilding | Common release practice; `crane copy` / `skopeo copy`. ⚠️ No single source cited: Konflux's release pipelines and Iron Bank's staging-to-production promotion work this way, from experience | ADR-002 rev 5, `scripts/copy-image.sh` |
+| Push to GHCR from a workflow with `GITHUB_TOKEN` and `packages: write` | GitHub Packages docs ✅ (ran 2026-11-26) | ADR-002 rev 5 |
+| Kubernetes **Pod Security Standards, `restricted`**, enforced by a namespace label, as the portable stand-in for OpenShift's `restricted-v2` SCC | kubernetes.io Pod Security Standards ⚠️ equivalence is close, not exact: SCC UID ranges and SELinux are not covered | `scripts/smoke-test.sh` |
+| kind for a throwaway cluster in CI | kind.sigs.k8s.io ✅ (ran 2026-11-26) | `scripts/smoke-kind.sh` |
+| A check must be shown to fail: negative fixtures beside every gate | Our own rule (docs/method.md), not copied | `tests/`, `make test-hermetic`, `make test-smoke` |
+
 ## Gaps: decisions with no reference (flagged as risk)
 - Partner Connect component per image, and export questionnaire batching. Red Hat process; no public prior art.
-- Using one `image.yaml` for container and xpkg kinds is our own schema. Keep it close to Iron Bank's manifest fields to limit invention.
+- Using one `image.yaml` for container and xpkg kinds is our own schema.
+- The release counter (`next-release.sh`) reads the staging registry's tags. Modelled on the RPM release field; the mechanism is ours.
+- The pipeline is shell scripts called from GitHub Actions, not Konflux's Tekton tasks. Deliberate (ADR-007), and the part of the factory with the least prior art behind it.
+- OpenVEX with our own `x-stakater-owner` and `x-stakater-expires` fields.
+- **Things the reference systems do that we do not yet:** continuous re-scan of published images (Iron Bank, Chainguard); a policy gate on release (Konflux's Conforma); building with Red Hat's own Go toolchain (`ubi9/go-toolset`) as Red Hat does; a label policy (see Red Hat's container image guidelines), where today we inherit several of UBI's labels unchanged. Keep it close to Iron Bank's manifest fields to limit invention.
