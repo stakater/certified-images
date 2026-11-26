@@ -1,8 +1,8 @@
 # First-time setup and first publish
 
 What a person has to do, in order, to take the factory from "builds on pull
-requests" to "publishes certified images". Steps 1 to 3 are once per
-repository. Steps 4 to 9 are once per image.
+requests" to "publishes certified images". Steps 1 to 3 and 6a are once per
+repository. The rest are once per image.
 
 Nothing here can be done by an agent: it needs repository admin rights, a Red
 Hat Partner Connect login, or a credential.
@@ -20,7 +20,8 @@ an issue or a chat.
 | 3 | Protect `main`, add `CODEOWNERS` | Repo admin | GitHub | repo |
 | 4 | Create the component, get its ID | Partner Connect user | Red Hat Partner Connect | image |
 | 5 | Submit the export questionnaire | Partner Connect user | Red Hat Partner Connect | image (can be batched) |
-| 6 | Add the three secrets | Repo admin | GitHub | image |
+| 6a | Add the shared API key `RH_PYXIS_TOKEN` | Repo admin | GitHub | repo |
+| 6b | Add the image's two registry secrets | Repo admin | GitHub | image |
 | 7 | Set the component ID in `image.yaml`, merge | Factory team | GitHub | image |
 | 8 | Check the publish run and Partner Connect | Factory team | GitHub, Partner Connect | publish |
 | 9 | Verify from outside CI, record the result | Factory team | Your own machine | first publish |
@@ -91,34 +92,63 @@ complete without it.
 
 ## 6. Add the secrets
 
-Each image needs three secrets. Their names end in the image's
-`redhat.secretSuffix` from `image.yaml`. For `opencost` the suffix is
-`OPENCOST`.
+There are two kinds, and they are managed differently.
+
+### 6a. The Partner Connect API key — once, for every image
 
 | Secret name | What it is | Where to get it ⚠️ |
 |---|---|---|
-| `RH_REGISTRY_USER_OPENCOST` | Registry username for this component. It looks like `redhat-isv-containers+<componentId>-robot` | Partner Connect → the component → Images → "Push image manually" |
+| `RH_PYXIS_TOKEN` | Partner Connect (Pyxis) API key. `preflight --submit` uses it to post certification results | Partner Connect → account → API keys → generate |
+
+One key covers every component: the key belongs to a Partner Connect account,
+and the component is chosen by the ID the pipeline passes to preflight. Adding
+an image never needs a new key.
+
+**Create it from a dedicated Stakater certification account, not a personal
+one.** The key is tied to the user who creates it. If that person's account
+changes, or the key is revoked, every publish fails at "Submit to Red Hat".
+
+**Rotation.** When the key is revoked or expires: generate a new one from the
+same account, run `gh secret set RH_PYXIS_TOKEN` again, and re-run the failed
+publish. Nothing in the repository changes. Record who holds the account and
+when the key was last rotated wherever the team keeps its runbooks.
+
+### 6b. Registry credentials — two per image
+
+Red Hat gives each component its own repository
+(`quay.io/redhat-isv-containers/<componentId>`) with its own login, so these
+cannot be shared. Their names end in the image's `redhat.secretSuffix` from
+`image.yaml`. For `opencost` the suffix is `OPENCOST`.
+
+| Secret name | What it is | Where to get it ⚠️ |
+|---|---|---|
+| `RH_REGISTRY_USER_OPENCOST` | Registry username for this component. It looks like `redhat-isv-containers+<componentId>-robot` | Partner Connect → the component → "Set up Preflight" / "Push image manually" |
 | `RH_REGISTRY_PASSWORD_OPENCOST` | The registry key shown next to that username | Same page |
-| `RH_PYXIS_TOKEN_OPENCOST` | Partner Connect API key, used to submit certification results | Partner Connect → account → API keys → generate |
 
 ⚠️ The page names are from memory of Partner Connect's layout and may have
-moved. The three values are what matters.
+moved. The values are what matters.
 
-If the API key turns out to be one per partner account and not per component,
-add it once as `RH_PYXIS_TOKEN` (no suffix) and skip the per-image one. The
-workflow uses the suffixed secret if it exists and falls back to the shared one.
+**At many images this is the part that grows.** Two secrets per image is
+workable but tedious. Red Hat's API may be able to return a component's
+registry credentials given the API key, which would leave `RH_PYXIS_TOKEN` as
+the only secret. ⚠️ That is unconfirmed: the endpoint could not be found in Red
+Hat's public API docs or in their own pipeline code (checked 2026-11-26). It is
+a backlog spike to try against the first real component, not something the
+pipeline relies on.
 
-**Where they go:** GitHub → `stakater/certified-images` → Settings → Secrets
-and variables → Actions → **Repository secrets** → New repository secret.
-Not environment secrets, not Dependabot secrets, not variables.
+### Where they go
+
+GitHub → `stakater/certified-images` → Settings → Secrets and variables →
+Actions → **Repository secrets** → New repository secret. Not environment
+secrets, not Dependabot secrets, not variables.
 
 Or from a terminal. Each command prompts for the value, so it never appears in
 your shell history:
 
 ```
-gh secret set RH_REGISTRY_USER_OPENCOST     --repo stakater/certified-images
-gh secret set RH_REGISTRY_PASSWORD_OPENCOST --repo stakater/certified-images
-gh secret set RH_PYXIS_TOKEN_OPENCOST       --repo stakater/certified-images
+gh secret set RH_PYXIS_TOKEN                --repo stakater/certified-images   # once
+gh secret set RH_REGISTRY_USER_OPENCOST     --repo stakater/certified-images   # per image
+gh secret set RH_REGISTRY_PASSWORD_OPENCOST --repo stakater/certified-images   # per image
 ```
 
 Check they exist (this lists names only):
@@ -150,7 +180,7 @@ In GitHub → Actions → `publish`, the run's summary shows the tag
 | "Log in to Red Hat's partner registry" | A registry secret is missing, misnamed or wrong |
 | "Release number" | The registry refused to list tags. Check the robot account can read the repository |
 | "Sign the digest and attest the SBOMs" | The job lacks `id-token: write`, or Sigstore was unreachable |
-| "Submit to Red Hat for certification" | The API key is missing or wrong, the component ID is wrong, or the image failed a certification check (the log names it) |
+| "Submit to Red Hat for certification" | `RH_PYXIS_TOKEN` is missing, revoked or wrong, the component ID is wrong, or the image failed a certification check (the log names it) |
 
 A failed run can be re-run. A re-run after a successful push takes the next
 release number.
@@ -175,5 +205,5 @@ After that, the consuming product pins the digest in its CSV `relatedImages`
 
 ## For the next image
 
-Steps 4 to 9 again, with that image's suffix. Steps 4 and 5 can start as soon
+Steps 4, 5, 6b and 7 to 9 again, with that image's suffix. The API key is already there. Steps 4 and 5 can start as soon
 as the image is admitted; they do not depend on its PR.

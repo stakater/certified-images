@@ -42,7 +42,8 @@ redhat:
   # Partner Connect container component (fill after creating the component)
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
   # Push target: quay.io/redhat-isv-containers/<componentId>
-  # Secrets: RH_PYXIS_TOKEN_OPENCOST, RH_REGISTRY_USER_OPENCOST, RH_REGISTRY_PASSWORD_OPENCOST
+  # Per-image registry secrets: RH_REGISTRY_USER_OPENCOST, RH_REGISTRY_PASSWORD_OPENCOST
+  # (the Partner Connect API key is one shared secret for all images)
   secretSuffix: OPENCOST
 
 consumers:

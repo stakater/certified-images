@@ -247,15 +247,15 @@ On a merge to `main` that touches an image (`publish.yaml`), the same job contin
 An image without a component ID is built and checked on `main` but not published; the run says so. To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
 
 ### Setup and secrets
-The publish path needs three repository secrets per image, named from `redhat.secretSuffix` in `image.yaml`:
+The publish path needs one shared repository secret, plus two per image named from `redhat.secretSuffix` in `image.yaml`:
 
-| Secret | What |
-|---|---|
-| `RH_REGISTRY_USER_<SUFFIX>` | The component's registry robot account, from Partner Connect |
-| `RH_REGISTRY_PASSWORD_<SUFFIX>` | That account's registry key |
-| `RH_PYXIS_TOKEN_<SUFFIX>`, or one shared `RH_PYXIS_TOKEN` | Partner Connect API key for submitting results |
+| Secret | How many | What |
+|---|---|---|
+| `RH_PYXIS_TOKEN` | One, for every image | Partner Connect API key for submitting certification results. The component is chosen by its ID, not by the key |
+| `RH_REGISTRY_USER_<SUFFIX>` | One per image | The component's registry robot account. Red Hat gives each component its own repository and login |
+| `RH_REGISTRY_PASSWORD_<SUFFIX>` | One per image | That account's registry key |
 
-**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: create the component, add the secrets, then merge the PR that sets the component ID. That merge is the publish.
+**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add the shared API key once; then per image, create the component, add its two registry secrets, and merge the PR that sets the component ID. That merge is the publish.
 
 ## Run it locally
 You need docker or podman, `make`, `git` and `jq`. Every other tool runs from a container image pinned by digest.

@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 3, 2026-11-25. Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 4, 2026-11-26. Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -53,6 +53,9 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
    - Renovate opens the PRs.
    - We maintain one stream per image: the latest admitted upstream version.
 5. **Partner Connect.** One component per image, Red Hat Container Registry distribution. Batch new images into one export questionnaire.
+   **Credentials.** We will publish many components, so credentials must not multiply with them where Red Hat allows:
+   - **One Partner Connect API key for all images** (`RH_PYXIS_TOKEN`). The key belongs to a Partner Connect account; the component is chosen by the ID passed to preflight. It is created from a dedicated Stakater certification account, not a personal one, and its rotation is a documented runbook step (`docs/setup.md`).
+   - **Registry push credentials are per component**, because Red Hat gives each component its own repository and login (`RH_REGISTRY_USER_<SUFFIX>`, `RH_REGISTRY_PASSWORD_<SUFFIX>`). This is Red Hat's model, not our choice.
 6. **Governance.** CODEOWNERS on `images/**` and `.github/**`: only the factory team merges to `main`, which publishes (Iron Bank model). Anyone may open a PR.
    **One exception:** Renovate automerges UBI base-digest bumps after green CI. The diff is a single digest line, and waiting for a person on each one would break the 7-day SLA. Every other change, including upstream bumps and deviations, needs a factory-team review.
 7. **No invention.** A new pattern needs a reference in `docs/references.md`, or an ADR that names the gap as a risk.
@@ -66,9 +69,11 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 - − Deviations are patches we carry. The two-case limit and the upstream-PR requirement keep them few and short-lived.
 - − Automerged base bumps publish without a human. The safeguard is the full PR pipeline (CVE gate, preflight), not review.
 - − Partner Connect component creation and export approval stay manual (once per image).
+- − Two registry secrets per image still have to be added by hand. One API key means the certification account is a single point of failure, hence the dedicated account and the rotation runbook.
 
 ## Open questions
-- ⚠️ Secrets per image. `image.yaml` assumes three per image (`RH_PYXIS_TOKEN_*`, `RH_REGISTRY_USER_*`, `RH_REGISTRY_PASSWORD_*`). The Pyxis API key may be per partner account, which would make it one shared secret plus two per image. Check in Partner Connect when the first component is created.
+- ⚠️ Can the per-component registry credentials be fetched with the API key, leaving one secret in total? Not confirmed: no such endpoint was found in Red Hat's public API docs or their pipeline code (checked 2026-11-26). Try it against the first real component before relying on it (rule 5).
+- ⚠️ That one API key covers every component is Red Hat's documented model and has not yet been exercised by this pipeline; the first publish of a second image confirms it.
 - ⚠️ Whether Red Hat ships a Dex image we are entitled to use as an operand (rule 1a). Check before admitting Dex.
 - The factory team is not named yet. Until it is, the interim owner is the only person who can merge.
 

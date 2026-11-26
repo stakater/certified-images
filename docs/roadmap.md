@@ -83,6 +83,7 @@ mirror, so that showback works without internet access.*
 
 - Scheduled daily re-scan of published digests (ADR-002 rule 4) and the first outer audit (method.md).
 - Offer OpenCost's dependency bump upstream and record the PR link in `image.yaml` (ADR-002 rule 2).
+- Spike: fetch a component's registry credentials with the API key, so the repo needs one secret in total (ADR-002 rule 5; unconfirmed endpoint).
 - Dex as the second third-party image.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).
 - Spike: build one Crossplane provider both ways and read the pod spec (ADR-005 open question 1).
