@@ -66,6 +66,15 @@ tools_env_shape() {
 }
 expect_pass "tool pins: every tools.env entry is tag@digest with a renovate comment" tools_env_shape
 
+# -------------------------------------------------------------- secrets
+# One Partner Connect API key for every component (ADR-002 rule 5). A
+# per-image variant would have to be created and rotated for each image.
+no_per_image_pyxis_token() {
+  ! grep -rnE 'RH_PYXIS_TOKEN_|RH_PYXIS_TOKEN[^ `]*(SUFFIX|\{0\})' \
+    .github/workflows scripts images README.md CLAUDE.md docs/setup.md
+}
+expect_pass "secrets: the Pyxis API key is one shared secret, never per image" no_per_image_pyxis_token
+
 # ---------------------------------------------------------------- linters
 # Each linter target must reject its broken fixture. A linter that cannot fail
 # is not a check.

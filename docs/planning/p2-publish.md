@@ -75,9 +75,9 @@ Order of steps when publishing:
 | `.github/workflows/images.yaml` | unchanged caller for PRs, read-only; now also runs the rehearsal |
 
 Secrets, looked up by `redhat.secretSuffix`:
-`RH_REGISTRY_USER_<SUFFIX>`, `RH_REGISTRY_PASSWORD_<SUFFIX>`, and
-`RH_PYXIS_TOKEN_<SUFFIX>` falling back to a shared `RH_PYXIS_TOKEN` (ADR-002
-open question: the Pyxis key may be per account).
+`RH_REGISTRY_USER_<SUFFIX>` and `RH_REGISTRY_PASSWORD_<SUFFIX>` per image, and
+one shared `RH_PYXIS_TOKEN` for all images. (Changed 2026-11-26, ADR-002 rev 4:
+the first version also looked for a per-image API key.)
 
 Not changing: the PR path's behaviour, the checks, the ADRs.
 

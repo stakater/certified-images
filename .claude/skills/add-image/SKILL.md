@@ -93,7 +93,9 @@ State these plainly in the PR description. An agent does not do them.
    **Red Hat Container Registry**. Put the component ID in
    `redhat.componentId`.
 2. Submit the export questionnaire for the component.
-3. Add the repository secrets named by `redhat.secretSuffix`.
+3. Add the image's two registry secrets, named by `redhat.secretSuffix`
+   (`docs/setup.md`, step 6b). The Partner Connect API key is shared and
+   already there.
 4. A factory-team member reviews and merges. The merge publishes.
 
 ## 7. Report

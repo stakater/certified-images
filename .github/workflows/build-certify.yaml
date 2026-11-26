@@ -145,7 +145,8 @@ jobs:
       - name: Submit to Red Hat for certification
         if: ${{ steps.mode.outputs.publish == 'true' }}
         env:
-          PFLT_PYXIS_API_TOKEN: ${{ secrets[format('RH_PYXIS_TOKEN_{0}', steps.plan.outputs.suffix)] || secrets.RH_PYXIS_TOKEN }}
+          # One Partner Connect API key for every component (ADR-002 rule 5).
+          PFLT_PYXIS_API_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
           REPOSITORY: ${{ steps.plan.outputs.repository }}
           TAG: ${{ steps.release.outputs.tag }}
           COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
