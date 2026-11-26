@@ -24,6 +24,8 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | Checks on the repo itself (`make verify`) | Runs on every PR |
 | Pinned source → Hermeto prefetch → offline build | Runs on every PR |
 | Start-up test, SBOMs, CVE gate, preflight dry run | Runs on every PR |
+| **Smoke test as a pod** on a local cluster under restricted pod security | Runs on every PR. An approximation of OpenShift, **not OpenShift** |
+| Smoke test on a real OpenShift cluster, gating promotion to Red Hat | Not built. Needs a cluster and credentials (story P.2b, level 2) |
 | Release numbering, push, promotion by digest | Rehearsed on every PR against a throwaway local registry |
 | **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Works. First run 2026-11-26. Provenance verified from outside CI with `gh attestation verify`; the `cosign verify` commands have not been run yet |
 | **Red Hat**: login, copy by digest, signing, `preflight --submit` | Written, **never run**. Needs the secrets in [docs/setup.md](docs/setup.md) |
@@ -134,6 +136,7 @@ sequenceDiagram
   WF->>BLD: build-image.sh with the network off
   BLD-->>IMG: linux/amd64 image
   WF->>IMG: test-image.sh checks labels, licences, non-root, starts
+  WF->>IMG: smoke-kind.sh runs it as a pod under restricted pod security
   WF->>SC: scan-image.sh
   SC-->>WF: Image SBOM. Fails on fixable CRITICAL or HIGH
   WF->>LR: Push a copy for the dry run
@@ -249,24 +252,25 @@ On a pull request, per image:
 3. **Prefetch** dependencies with Hermeto. This is the only step that uses the network.
 4. **Build** with `--network=none`, for `linux/amd64`.
 5. **Test** the image: labels match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
-6. **Scan**: syft SBOM of the image, Hermeto SBOM of the inputs, trivy gate on fixable CRITICAL and HIGH.
-7. **Preflight dry run**: Red Hat's certification checks against a throwaway local registry. Nothing is submitted.
+6. **Smoke test**: run it as a pod on a throwaway local cluster that enforces restricted pod security, with an arbitrary UID, a read-only root filesystem and no capabilities. It must become Ready, answer on its declared port and path, and not restart.
+7. **Scan**: syft SBOM of the image, Hermeto SBOM of the inputs, trivy gate on fixable CRITICAL and HIGH.
+8. **Preflight dry run**: Red Hat's certification checks against a throwaway local registry. Nothing is submitted.
 
-A separate job proves a build step cannot reach the network (`make test-hermetic`).
+Two separate jobs prove the checks can fail: a build step cannot reach the network (`make test-hermetic`), and the smoke test rejects an image that writes to its root filesystem or never serves (`make test-smoke`).
 
 On a merge to `main` that touches an image (`publish.yaml`), the same job continues.
 
 **Stage 1, every image: GHCR.** Needs no secrets.
 
-8. **Release number**: the next free `<upstream-version>-<release>` tag in the staging repository. The image is built with that release.
-9. **Push** to `ghcr.io/stakater/ubi/<name>`. A tag that already exists is refused.
-10. **Sign** the digest with cosign (keyless), and **attest** both SBOMs and the build provenance.
+9. **Release number**: the next free `<upstream-version>-<release>` tag in the staging repository. The image is built with that release.
+10. **Push** to `ghcr.io/stakater/ubi/<name>`. A tag that already exists is refused.
+11. **Sign** the digest with cosign (keyless), and **attest** both SBOMs and the build provenance.
 
 **Stage 2, when the image is ready: Red Hat.** Runs only if the image has a Partner Connect component ID and its secrets exist. Otherwise the run says what is missing and stops after stage 1.
 
-11. **Copy the staged digest** to `quay.io/redhat-isv-containers/<componentId>`, with the same tag. The copy fails unless the digest arrives unchanged.
-12. **Sign and attest** that reference.
-13. **Submit** to Red Hat with `preflight --submit`. Partner Connect then publishes the image.
+12. **Copy the staged digest** to `quay.io/redhat-isv-containers/<componentId>`, with the same tag. The copy fails unless the digest arrives unchanged.
+13. **Sign and attest** that reference.
+14. **Submit** to Red Hat with `preflight --submit`. Partner Connect then publishes the image.
 
 To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
 
@@ -288,6 +292,8 @@ You need docker or podman, `make`, `git` and `jq`. Every other tool runs from a 
 make verify                  # checks on the repo: lint, image.yaml rules, script tests
 make image IMAGE=opencost    # build, test, scan and dry-run certify one image
 make test-hermetic           # prove a build step cannot reach the network
+make smoke IMAGE=opencost    # run a built image as a pod on a local kind cluster (needs kind and kubectl)
+make test-smoke              # prove the smoke test rejects broken images
 make publish-rehearsal IMAGE=opencost   # release numbering + push against a local registry (needs a built image)
 ```
 
@@ -298,7 +304,7 @@ With Claude Code: `/add-image <name> <owner/repo> <tag>`. By hand, the same step
 
 1. **Admission** (ADR-002 rule 1). All four must hold: no Red Hat image we may ship, a permissive licence, a maintained upstream, and a Stakater product that deploys it.
 2. **Scaffold:** `scripts/new-image.sh <name> <owner/repo> <tag>`. It pins the tag's commit and writes `images/<name>/` from a template. Only Go upstreams have a template today.
-3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, start-up test command, Go version, main package path, labels, licence files.
+3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`.
 4. **`make verify`** until it passes. It rejects the scaffold as generated.
 5. **Open a PR.** CI builds the image offline, tests it, scans it and runs Red Hat's checks as a dry run. If the CVE gate fails, see `.claude/skills/fix-cve/SKILL.md`.
 6. **Human steps for certification:** create the Partner Connect component (Container image, **UBI**, **Red Hat Container Registry**), put its ID in `image.yaml`, submit the export questionnaire, add the repository secrets.
@@ -334,11 +340,13 @@ Checked by running it (2026-11-25):
 - preflight 1.23.0 uses `--certification-component-id`. A dry run needs a registry, so the pipeline starts a local one.
 - `ubi9/ubi-minimal` ships a CA bundle. `ubi9/ubi-micro` does not, so OpenCost stays on `ubi-minimal` (ADR-004).
 - All tool images and GitHub actions are pinned by digest or commit.
+- **What the smoke test found about OpenCost** (2026-11-26). It runs as an arbitrary UID with a read-only root filesystem and no capabilities. Inside a cluster it exits at start-up unless it has read access to the Kubernetes API and a Prometheus that already reports a running scrape job. It tries to create `/var/configs` and falls back to memory when it cannot. A product deploying it needs RBAC, a reachable Prometheus, and a writable volume at `/var/configs` if that state should persist.
 - Staging to GHCR (2026-11-26): the workflow token can create `ghcr.io/stakater/ubi/<name>`; push, keyless signing, SBOM attestations and provenance all ran. `gh attestation verify` from outside CI confirms the provenance was signed by `build-certify.yaml` on `main`.
 - **A package created by this public repository is public by default.** The pipeline now fails if a staging package can be pulled anonymously.
 
 Still unverified:
-- [ ] **That an image actually works on OpenShift.** No check deploys an image to a cluster. The start-up test runs `--help` in a plain container engine, and preflight is a static inspection. Neither shows that the image serves requests, or runs under OpenShift's restricted security context. Story P.2b in the roadmap.
+- [ ] **That an image works on OpenShift itself.** The smoke test runs on a local Kubernetes cluster with restricted pod security, which approximates OpenShift's `restricted-v2`. It does not exercise OpenShift's SCC admission, its UID ranges, SELinux or FIPS mode. Level 2 of story P.2b runs the same test on a real OpenShift cluster.
+- [ ] That an image does its job for a product. The smoke test shows OpenCost starts and serves `/healthz`; it does not check any cost data. That is story P.3.
 - [ ] The Red Hat stage: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
 - [ ] `cosign verify` and `cosign verify-attestation` against a staged image from outside CI. Signing ran in CI without error; only `gh attestation verify` has been run from outside.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.

@@ -1,0 +1,76 @@
+# Smoke-test fixture (scripts/smoke-test.sh), not a deployment manifest.
+#
+# OpenCost queries Prometheus at start-up and exits unless Prometheus reports at
+# least one running scrape job. This is a Prometheus that scrapes only itself.
+# It is Ready only once that first scrape is in, so the image under test never
+# starts before the answer it needs exists. It runs under the same restricted
+# settings as the image under test.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 2s
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: prometheus }
+  template:
+    metadata:
+      labels: { app: prometheus }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 0
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: prometheus
+          image: docker.io/prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+          ports:
+            - containerPort: 9090
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          readinessProbe:
+            # Ready when the "up" query has a sample, not merely when the server listens.
+            exec:
+              command:
+                - sh
+                - -c
+                - wget -qO- 'http://localhost:9090/api/v1/query?query=up' | grep -q '"value"'
+            periodSeconds: 2
+          volumeMounts:
+            - { name: data, mountPath: /prometheus }
+            - { name: config, mountPath: /etc/prometheus }
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: config
+          configMap: { name: prometheus }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+spec:
+  selector: { app: prometheus }
+  ports:
+    - port: 9090
+      targetPort: 9090

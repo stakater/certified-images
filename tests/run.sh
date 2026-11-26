@@ -123,6 +123,10 @@ toolchain-unpinned|Containerfile|s/^ARG GO_TAG=1.27.3@sha256:.*/ARG GO_TAG=1.27.
 from-literal-unpinned|Containerfile|s#^FROM docker.io/library/golang:.* AS build#FROM docker.io/library/golang:1.27.3 AS build#|10
 test-command-missing|image.yaml|/^  command:/d|11
 test-command-empty|image.yaml|s/^  command: .*/  command: []/|11
+smoke-port-not-a-number|image.yaml|s/^  port: 8080/  port: http/|14
+smoke-port-out-of-range|image.yaml|s/^  port: 8080/  port: 70000/|14
+smoke-path-relative|image.yaml|s#^  path: /healthz#  path: healthz#|14
+smoke-missing|image.yaml|/^smoke:/,/^  args:/d|14
 CASES
 
 dir=$(mutate from-stage-alias Containerfile 's#^COPY --from=build /out /out#COPY --from=build /out /out#')
@@ -197,14 +201,15 @@ expect_fail "new-image: fails on an unknown tag" "not found" new_image ghost exa
 expect_fail "new-image: missing arguments fail" "" new_image only-a-name
 expect_fail "new-image: refuses a name that is not a lowercase slug" "lowercase" new_image Bad_Name example/annotated v1.0.0
 
-# The scaffold is deliberately incomplete: the licence is TODO and the start-up
-# test command is empty. check-image must flag exactly those two.
+# The scaffold is deliberately incomplete: the licence is TODO, the start-up
+# test command is empty and the smoke test has no port. check-image must flag
+# exactly those three.
 scaffold_out=$(cd "$SANDBOX" && scripts/check-image.sh images/annotated 2>&1)
 scaffold_rules=$(printf '%s\n' "$scaffold_out" | grep -Eo ': rule [0-9]+:' | sort -u | tr -d ':\n')
-if [ "$scaffold_rules" = " rule 11 rule 4" ]; then
-  ok "new-image: scaffold fails only rule 4 (licence TODO) and rule 11 (no test command)"
+if [ "$scaffold_rules" = " rule 11 rule 14 rule 4" ]; then
+  ok "new-image: scaffold fails only rule 4 (licence), 11 (test command) and 14 (smoke test)"
 else
-  ko "new-image: scaffold fails only rule 4 and rule 11" "got: '$scaffold_rules'
+  ko "new-image: scaffold fails only rules 4, 11 and 14" "got: '$scaffold_rules'
 $scaffold_out"
 fi
 
@@ -551,6 +556,37 @@ expect_pass "changed-images: several changed images are listed, sorted" \
   changed "$(rev HEAD~1)" "$(rev HEAD)" '["images/a","images/c"]'
 expect_pass "changed-images: an all-zero before lists every image" \
   changed 0000000000000000000000000000000000000000 "$(rev HEAD)" '["images/a","images/c"]'
+
+# ------------------------------------------------------------ smoke-test.sh
+# The pod the smoke test runs, rendered without a cluster. Each line is a
+# setting OpenShift's restricted security context imposes or that we add.
+RENDERED=$(scripts/smoke-test.sh --render registry.example/img@sha256:abc "$FIX/image-good" 2>&1) || RENDERED="RENDER FAILED: $RENDERED"
+rendered_has() { printf '%s\n' "$RENDERED" | grep -qE -- "$1"; }
+while IFS='|' read -r name pattern; do
+  [ -z "$name" ] && continue
+  expect_pass "smoke-test: the pod $name" rendered_has "$pattern"
+done <<'CASES'
+runs the image under test|image: "?registry.example/img@sha256:abc
+must run as non-root|runAsNonRoot: true
+runs as an arbitrary high UID|runAsUser: 1000680000
+runs in group 0, as on OpenShift|runAsGroup: 0
+uses the default seccomp profile|type: RuntimeDefault
+forbids privilege escalation|allowPrivilegeEscalation: false
+drops every capability|^ +- ALL$
+has a read-only root filesystem|readOnlyRootFilesystem: true
+does not mount an API token by default|automountServiceAccountToken: false
+probes the declared port|port: 8080
+probes the declared path|path: "?/healthz
+passes the declared environment|name: "?LOG_LEVEL
+passes the declared arguments|^ +- serve$
+never restarts on its own, so a crash is visible|restartPolicy: Never
+CASES
+rendered_omits_uid() {
+  local out
+  out=$(SMOKE_RUN_AS_USER="" scripts/smoke-test.sh --render registry.example/img@sha256:abc "$FIX/image-good") || return 1
+  ! printf '%s\n' "$out" | grep -q 'runAsUser'
+}
+expect_pass "smoke-test: on OpenShift the UID is left for the cluster to assign" rendered_omits_uid
 
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }

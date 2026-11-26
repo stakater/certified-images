@@ -1,0 +1,42 @@
+# Smoke-test fixture (scripts/smoke-test.sh), not a deployment manifest.
+#
+# Inside a cluster OpenCost reads the Kubernetes API and exits at start-up if it
+# cannot. This grants the test pod's service account the read-only access
+# OpenCost needs, as its Helm chart does. __NAMESPACE__ is replaced with the
+# throwaway test namespace, and both objects are deleted after the test.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: smoke-opencost-__NAMESPACE__
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, endpoints, limitranges, namespaces, nodes, persistentvolumeclaims, persistentvolumes, pods, replicationcontrollers, resourcequotas, services]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [daemonsets, deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [cronjobs, jobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: smoke-opencost-__NAMESPACE__
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: smoke-opencost-__NAMESPACE__
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: __NAMESPACE__

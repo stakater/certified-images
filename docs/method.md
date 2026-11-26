@@ -43,7 +43,7 @@ There are two loops:
 | Recorded decisions | `docs/adr/`: history is never rewritten; an ADR is revised with the old version archived, or superseded | ADR-001; review |
 | Prior art first | every ADR names the reference it copies, or names the gap as a risk | `docs/references.md`; ADR-002 rule 7; review |
 | Story-driven delivery | house story format, a **Done:** line, the lifecycle below, one story at a time | roadmap convention; PRs cite the story |
-| Test first | red → green on the factory's checks: lint, `image.yaml` rules, script tests | `make verify`, run by the edit hook (`.claude/settings.json`) and on every PR (`verify.yaml`). Image-level tests run in CI (`images.yaml`) |
+| Test first | red → green on the factory's checks: lint, `image.yaml` rules, script tests | `make verify`, run by the edit hook (`.claude/settings.json`) and on every PR (`verify.yaml`). Image-level tests and a smoke test as a pod run in CI (`images.yaml`) |
 | Hermetic pipeline as the end-to-end test | a PR runs prefetch → offline build → start-up test → SBOM → CVE gate → preflight dry run | `build-certify.yaml` called by `images.yaml` on every PR touching images, scripts or workflows, and by `publish.yaml` on merges to `main`. **Not yet a required check**: branch protection is not set up |
 | Outer audit | published images are re-checked from outside on a schedule (below) | **not yet enforced.** Story to be written after the first publish |
 | Context persistence | `CLAUDE.md` invariants + context-capsule planning docs | `docs/planning/TEMPLATE.md` |

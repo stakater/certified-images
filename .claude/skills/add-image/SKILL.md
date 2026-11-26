@@ -47,6 +47,15 @@ In `image.yaml`:
 - `build.prefetch`: `gomod` with the path of the module that holds `go.mod`.
 - `test.command`: arguments that make the binary start and exit 0 with no
   network and no config, usually `["--help"]` or `["version"]`.
+- `smoke.port` and `smoke.path`: the port the image serves HTTP on and a path
+  that answers 2xx when it is healthy. The smoke test runs the image as a pod
+  with an arbitrary UID, a read-only root filesystem and no capabilities.
+  `smoke.env` and `smoke.args` set what it needs to start.
+- If it cannot start alone (it needs API access or a dependency), add fixtures
+  in `images/<name>/smoke/*.yaml`. `__NAMESPACE__` is replaced with the test
+  namespace. See `images/opencost/smoke/` for RBAC and a stub Prometheus.
+  Keep fixtures minimal: the test shows the image runs and serves, not that it
+  does its job.
 - `consumers`: the product(s) from admission (d).
 - Leave `redhat.componentId` as the placeholder. A person fills it in step 6.
 
@@ -80,6 +89,7 @@ The `images` workflow builds and checks the new image. Read each stage:
 | Prefetch | Hermeto cannot resolve the dependencies | Check `build.prefetch` and that upstream has a lockfile |
 | Build | Wrong package path, or a Go version older than `go.mod` needs | Fix the Containerfile. The build cannot download a toolchain |
 | Image test | A label, licence file or the start-up command is wrong | Fix the Containerfile or `test.command` |
+| Smoke test | The pod was rejected, did not become Ready, or did not answer. The log shows the pod's events and output | If it writes to a path, that path needs a volume in real deployments: say so in the PR. If it needs a dependency, add a fixture. Do not relax the pod's security settings |
 | CVE gate | Fixable CRITICAL or HIGH vulnerabilities | Use the `fix-cve` skill |
 | Preflight | The image would not pass Red Hat certification | Read the failed check's name; fix the Containerfile |
 

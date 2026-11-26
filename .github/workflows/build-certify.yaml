@@ -123,6 +123,11 @@ jobs:
           RELEASE: ${{ steps.release.outputs.release }}
         run: make test-image IMAGE_DIR="$IMAGE_DIR" RELEASE="$RELEASE"
 
+      # Runs the image as a pod under restricted pod security and asks it to
+      # serve. An approximation of OpenShift, not OpenShift (story P.2b).
+      - name: Smoke test on a local cluster
+        run: make smoke IMAGE_DIR="$IMAGE_DIR"
+
       - name: SBOMs and CVE gate
         run: make scan IMAGE_DIR="$IMAGE_DIR"
 
