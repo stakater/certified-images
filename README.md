@@ -32,7 +32,7 @@ Images:
 
 | Image | Upstream | Builds and passes checks | Published |
 |---|---|---|---|
-| `opencost` | opencost/opencost | Yes | No: waiting for a Partner Connect component ID |
+| `opencost` | opencost/opencost | Yes | Not yet. Component `6b07595f3ecfc52e21d75e12` is set; the first publish runs when this is on `main` and the secrets exist. Will be `registry.connect.redhat.com/stakater/opencost` |
 
 How we work: [docs/method.md](docs/method.md).
 

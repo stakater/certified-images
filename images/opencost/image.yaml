@@ -39,9 +39,10 @@ test:
   command: ["--help"]
 
 redhat:
-  # Partner Connect container component (fill after creating the component)
-  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
-  # Push target: quay.io/redhat-isv-containers/<componentId>
+  # Partner Connect container component "Stakater build of OpenCost"
+  componentId: "6b07595f3ecfc52e21d75e12"
+  # Push target:      quay.io/redhat-isv-containers/6b07595f3ecfc52e21d75e12
+  # Public pull spec: registry.connect.redhat.com/stakater/opencost (after certification)
   # Per-image registry secrets: RH_REGISTRY_USER_OPENCOST, RH_REGISTRY_PASSWORD_OPENCOST
   # (the Partner Connect API key is one shared secret for all images)
   secretSuffix: OPENCOST
