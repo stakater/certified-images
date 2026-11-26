@@ -336,6 +336,7 @@ Checked by running it (2026-11-25):
 - All tool images and GitHub actions are pinned by digest or commit.
 
 Still unverified:
+- [ ] **That an image actually works on OpenShift.** No check deploys an image to a cluster. The start-up test runs `--help` in a plain container engine, and preflight is a static inspection. Neither shows that the image serves requests, or runs under OpenShift's restricted security context. Story P.2b in the roadmap.
 - [ ] The whole outward-facing publish path. Staging: whether the workflow token may create the GHCR package, its default visibility, cosign signing and attestations, provenance. Red Hat: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
 - [ ] Renovate keeps current: the UBI and toolchain digests, the upstream tag and commit (in `image.yaml` and the Containerfile together), and the tool images in `tools.env`. The config validates, but the Renovate app has not run on this repo.

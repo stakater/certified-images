@@ -81,6 +81,24 @@ images without waiting for Red Hat's manual steps.*
   against it from outside CI; the package is confirmed not public; the Red Hat
   stage receives the same digest by copy; ADR-002 rev 5 is merged.
 
+**Story P.2b — an image is proven to run on OpenShift before it is promoted** 📝
+*As a product team, I want every staged image deployed on a real OpenShift
+cluster under the default restricted security context and checked for doing its
+job, so that "certified" also means "works", and a broken image is never
+promoted to Red Hat.*
+- **Done:** each image declares a smoke test (how to deploy it and what a
+  healthy answer looks like); after staging, the pipeline deploys the staged
+  digest to an OpenShift test cluster under `restricted-v2`, waits for Ready,
+  runs the check, and cleans up; promotion to Red Hat does not run unless it
+  passes; pull requests run the same test on a local cluster with restricted
+  pod security as an approximation.
+- **Open before approval:** which OpenShift cluster, and who provides its
+  service-account credentials and a GHCR pull secret.
+- **Why this exists:** today nothing runs the image on OpenShift. The checks
+  prove it starts with `--help` as an arbitrary UID in a plain container
+  engine, and that it passes Red Hat's static checks. Neither proves it serves
+  requests, runs with a read-only root filesystem, or works under an SCC.
+
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
 mirror, so that showback works without internet access.*
