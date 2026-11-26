@@ -420,6 +420,15 @@ expect_pass "pyxis-probe: never prints the API key" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$BODY' | grep -q PROBESECRET"
 expect_pass "pyxis-probe: the API key is not passed on curl's command line" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$BODY' >/dev/null; ! grep -q PROBESECRET '$RH/log/curl.args'"
+# When the API refuses, its own explanation is what a person needs. That text is
+# an error message, not a secret; the key is scrubbed from it all the same.
+ERR='{"detail":"Invalid API key: tok-PROBESECRET is not recognised","status":401,"title":"Unauthorized","trace_id":"abc","type":"about:blank"}'
+expect_pass "pyxis-probe: on a refusal it shows the API's own explanation" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 401 '$ERR' | grep -q 'Unauthorized.*Invalid API key'"
+expect_pass "pyxis-probe: and scrubs the API key out of that explanation" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 401 '$ERR' | grep -q PROBESECRET"
+expect_pass "pyxis-probe: on success it still shows no values" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$BODY' | grep -qE 'SECRETVALUE|robot-user'"
 expect_fail "pyxis-probe: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/pyxis-probe.sh "$CID"
 expect_fail "pyxis-probe: refuses a malformed component ID" "component" rh env RH_PYXIS_TOKEN=t scripts/pyxis-probe.sh not-an-id
 
