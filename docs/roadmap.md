@@ -111,6 +111,15 @@ UBI's build date and Red Hat's commit.*
   an image whose labels are missing, wrong or still inherited from the base;
   the scaffold template has them.
 
+**Story F.1 — an image can ship a functional test** 🔨 *(approved 2026-11-26; planning: [f1-functional-tests](planning/f1-functional-tests.md))*
+*As a product team, I want each image to carry a test of what it actually does,
+run by the pipeline wherever it has a cluster, so that an image that starts but
+does not work is caught before it is published.*
+- **Done:** an image may ship `functional/test.sh`; the pipeline runs it after
+  the smoke test and fails if it fails; Reloader has one proving that a
+  ConfigMap change rolls the workload and an unrelated change does not; it has
+  been shown to fail without Reloader.
+
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
 mirror, so that showback works without internet access.*
@@ -124,7 +133,6 @@ mirror, so that showback works without internet access.*
 - Scheduled daily re-scan of published digests (ADR-002 rule 4) and the first outer audit (method.md).
 - Offer OpenCost's dependency bump upstream and record the PR link in `image.yaml` (ADR-002 rule 2).
 - Make the pipeline callable from another repository (ADR-006), then move Reloader's build to the Reloader repository.
-- A functional-test contract: an image may ship a test the pipeline runs against the cluster once the image is up (for Reloader: change a ConfigMap, assert the workload rolled). The same test runs on the local cluster and on OpenShift.
 - Split the pipeline into build-and-stage, test-on-OpenShift, promote-to-Red-Hat, once the OpenShift runner exists (P.2b level 2).
 - Reloader Console (Partner Connect component `6af9ac3f8523cfd9714c7645`) and Reloader Gateway (`6af9ac54ad3a47dac910b90b`): components exist; their source repository and release tags are not yet known to this repo.
 - Dex as the second third-party image.
