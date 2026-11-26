@@ -145,5 +145,13 @@ done <<<"$listed"
 bad=$(printf '%s' "$JSON" | jq -r '(.deviations // [])[] | select(((.reason // "") == "") or (((.fixes // []) | length) == 0)) | .patch // "(no patch)"')
 [ -z "$bad" ] || err 12 "deviation $(echo "$bad" | tr '\n' ' ')needs a reason and a non-empty fixes list of vulnerability IDs"
 
+# rule 13: the Partner Connect component ID is the placeholder or a real ID.
+# A typo here would push to the wrong repository.
+component=$(get .redhat.componentId)
+case "$component" in
+  TODO*) ;;
+  *) [[ "$component" =~ ^[a-f0-9]{24}$ ]] || err 13 "redhat.componentId must be the TODO placeholder or 24 hex characters, got '$component'" ;;
+esac
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

@@ -334,6 +334,93 @@ expect_fail "check-vex: a file that is not JSON fails" "" env NOW=$VEX_NOW scrip
 expect_pass "check-vex: the documented example is valid in shape" \
   bash -c "d=\$(mktemp -d '$TMP/vexex.XXXX')/EXAMPLE && mkdir -p \$d && sed -e 's/^name: image-good/name: EXAMPLE/' '$FIX/image-good/image.yaml' >\$d/image.yaml && cp docs/vex-example.openvex.json \$d/vex.openvex.json && NOW=$VEX_NOW scripts/check-vex.sh \$d"
 
+# ---------------------------------------------------------- next-release.sh
+# next_release <version> <expected> <tags...>
+next_release() {
+  local version=$1 expected=$2 got
+  shift 2
+  got=$(printf '%s\n' "$@" | scripts/next-release.sh "$version") || return 1
+  [ "$got" = "$expected" ] || {
+    echo "expected $expected, got $got"
+    return 1
+  }
+}
+expect_pass "next-release: no tags gives 1" next_release v1.2.3 1 ""
+expect_pass "next-release: after -1 and -2 comes 3" next_release v1.2.3 3 v1.2.3-1 v1.2.3-2
+expect_pass "next-release: numeric, not alphabetic (10 after 9)" next_release v1.2.3 11 v1.2.3-9 v1.2.3-10
+expect_pass "next-release: other versions are ignored" next_release v1.2.3 2 v1.2.2-7 v1.2.3-1 v1.2.4-5
+expect_pass "next-release: a longer version with the same prefix is ignored" next_release v1.2 1 v1.2.3-4 v1.20-9
+expect_pass "next-release: signature and non-numeric tags are ignored" \
+  next_release v1.2.3 2 v1.2.3-1 v1.2.3 latest v1.2.3-rc1 sha256-abc.sig v1.2.3-1.att
+expect_fail "next-release: a version is required" "" bash -c 'echo | scripts/next-release.sh'
+
+# ---------------------------------------------------------- publish-plan.sh
+# plan_image <case> <componentId>
+plan_image() {
+  local dir="$TMP/plan/$1/image-good"
+  mkdir -p "$dir"
+  sed -e "s/componentId: .*/componentId: \"$2\"/" "$FIX/image-good/image.yaml" >"$dir/image.yaml"
+  echo "$dir"
+}
+plan_has() { # capture first: see hook_runs for why not to pipe into grep -q
+  local out
+  out=$(scripts/publish-plan.sh "$1") || return 1
+  printf '%s\n' "$out" | grep -qx -- "$2"
+}
+d=$(plan_image placeholder TODO-PARTNER-CONNECT-COMPONENT-ID)
+expect_pass "publish-plan: a placeholder component ID is not publishable" plan_has "$d" "publishable=false"
+expect_pass "publish-plan: and it says why" bash -c "out=\$(scripts/publish-plan.sh '$d') && printf '%s\n' \"\$out\" | grep -q '^reason=.*componentId'"
+d=$(plan_image real 0123456789abcdef01234567)
+expect_pass "publish-plan: a real component ID is publishable" plan_has "$d" "publishable=true"
+expect_pass "publish-plan: repository is Red Hat's partner registry path" \
+  plan_has "$d" "repository=quay.io/redhat-isv-containers/0123456789abcdef01234567"
+expect_pass "publish-plan: version comes from image.yaml" plan_has "$d" "version=v1.2.3"
+expect_pass "publish-plan: suffix comes from image.yaml" plan_has "$d" "suffix=IMAGE_GOOD"
+d=$(plan_image malformed not-an-id)
+expect_fail "publish-plan: a malformed component ID fails" "componentId" scripts/publish-plan.sh "$d"
+
+dir=$(mutate component-id-malformed image.yaml 's/componentId: .*/componentId: "not-an-id"/')
+expect_fail "check-image: a malformed component ID fails rule 13" "rule 13:" scripts/check-image.sh "$dir"
+dir=$(mutate component-id-real image.yaml 's/componentId: .*/componentId: "0123456789abcdef01234567"/')
+expect_pass "check-image: a 24-hex component ID passes" scripts/check-image.sh "$dir"
+
+# -------------------------------------------------------- changed-images.sh
+CH="$TMP/changed"
+mkdir -p "$CH/scripts" "$CH/images/a" "$CH/images/b" "$CH/docs"
+cp scripts/changed-images.sh "$CH/scripts/" 2>/dev/null
+(
+  cd "$CH" || exit 1
+  git init -q -b main .
+  git config user.email test@example.com
+  git config user.name test
+  echo a >images/a/image.yaml && echo b >images/b/image.yaml && echo d >docs/x.md
+  git add . && git commit -q -m base
+  echo a2 >images/a/Containerfile && git add . && git commit -q -m "change a"
+  echo d2 >docs/x.md && git add . && git commit -q -m "docs only"
+  git rm -q -r images/b && git commit -q -m "remove b"
+  mkdir -p images/c && echo c >images/c/image.yaml && echo x >images/a/image.yaml
+  git add . && git commit -q -m "add c, change a"
+) >/dev/null 2>&1
+rev() { git -C "$CH" rev-parse "$1"; }
+changed() { # <before> <after> <expected-json>
+  local got
+  got=$(cd "$CH" && scripts/changed-images.sh "$1" "$2") || return 1
+  [ "$got" = "$3" ] || {
+    echo "expected $3, got $got"
+    return 1
+  }
+}
+expect_pass "changed-images: a change inside one image lists that image" \
+  changed "$(rev HEAD~4)" "$(rev HEAD~3)" '["images/a"]'
+expect_pass "changed-images: a docs-only change lists nothing" \
+  changed "$(rev HEAD~3)" "$(rev HEAD~2)" '[]'
+expect_pass "changed-images: a deleted image is not listed" \
+  changed "$(rev HEAD~2)" "$(rev HEAD~1)" '[]'
+expect_pass "changed-images: several changed images are listed, sorted" \
+  changed "$(rev HEAD~1)" "$(rev HEAD)" '["images/a","images/c"]'
+expect_pass "changed-images: an all-zero before lists every image" \
+  changed 0000000000000000000000000000000000000000 "$(rev HEAD)" '["images/a","images/c"]'
+
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
 # Capture first, then match the command's own output line. Piping straight into

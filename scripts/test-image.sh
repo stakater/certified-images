@@ -53,6 +53,8 @@ check "label name" "$(label name)" "stakater/$name"
 check "label version" "$(label version)" "$(get .upstream.version)"
 check "label org.opencontainers.image.revision" "$(label org.opencontainers.image.revision)" "$(get .upstream.commit)"
 check "label org.opencontainers.image.licenses" "$(label org.opencontainers.image.licenses)" "$(get .upstream.license)"
+# The release label must be the release this build was given (ADR-002 rule 3).
+[ -z "${RELEASE:-}" ] || check "label release" "$(label release)" "$RELEASE"
 for l in vendor release summary description maintainer; do
   present "label $l" "$(label "$l")"
 done
