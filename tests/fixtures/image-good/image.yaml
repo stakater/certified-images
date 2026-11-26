@@ -4,6 +4,7 @@ displayName: Stakater build of Example
 summary: Example image used by tests
 description: >-
   Fixture that satisfies every rule in scripts/check-image.sh.
+tags: [example, testing]
 upstream:
   repo: https://github.com/example/example
   # renovate: datasource=github-tags depName=example/example

@@ -50,7 +50,7 @@ status, image names or version numbers here; they go stale.
 2. `docs/method.md` — how we work: story → plan → red → green → verify → audit.
 3. `docs/roadmap.md` — the stories and their lifecycle state.
 4. `docs/adr/` — the decisions. ADR-001 is how we record them; ADR-002 is the
-   umbrella; 003–008 are its parts. Check each ADR's status line.
+   umbrella; 003–009 are its parts. Check each ADR's status line.
 5. `docs/references.md` — the prior art each decision copies.
 
 ## Workflow (the short form of `docs/method.md`)
@@ -116,8 +116,12 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
   digest is also copied to Red Hat's registry and submitted for certification
   (`publish.yaml`, ADR-002 rev 5). Never set a component ID without being asked.
 - **Staging is not certified.** An image on GHCR has passed our checks, not Red
-  Hat's. Never call it certified, never make the package public, and never put
-  a GHCR reference in anything shipped to a customer. Never merge, push to `main`, or trigger a
+  Hat's. Never call it certified, and never put a GHCR reference in anything
+  shipped to a customer.
+- **Staging is private unless declared.** `staging.visibility: public` in
+  `image.yaml` is the owner's decision, per image, and only for rebuilds of
+  open-source software. Never add it without being asked, and never for an
+  image of Stakater's own code (ADR-002 rev 6). Never merge, push to `main`, or trigger a
   publish without explicit authorization. Work on a feature branch and open a PR.
 - **Secrets by reference only.** Partner Connect and registry credentials are
   GitHub secrets named from `image.yaml` (`redhat.secretSuffix`). Never read,
@@ -189,6 +193,7 @@ scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only p
 scripts/prefetch.sh            Hermeto prefetch (the only networked build step)
 scripts/build-image.sh         fetch -> prefetch -> build with the network off
 scripts/test-image.sh          labels, /licenses, non-root, starts
+scripts/check-labels.sh        the label policy (ADR-009), checked on the built image
 scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
 scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
@@ -198,7 +203,7 @@ scripts/publish-plan.sh        staging repository, and whether and where to publ
 scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
 scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag
 scripts/copy-image.sh          promotes a digest from staging to Red Hat's registry, unchanged
-scripts/assert-not-public.sh   fails if a staging package can be pulled anonymously
+scripts/assert-visibility.sh   fails if a staging package is more open than its image declares
 scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched

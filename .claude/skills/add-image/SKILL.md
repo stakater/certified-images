@@ -44,6 +44,7 @@ Look at upstream's own Dockerfile and `go.mod` at the pinned tag to answer these
 In `image.yaml`:
 - `summary`, `description`.
 - `upstream.license`: the SPDX identifier.
+- `tags`: lowercase search terms for the catalog. They become `io.openshift.tags`.
 - `build.prefetch`: `gomod` with the path of the module that holds `go.mod`.
 - `test.command`: arguments that make the binary start and exit 0 with no
   network and no config, usually `["--help"]` or `["version"]`.
@@ -57,6 +58,9 @@ In `image.yaml`:
   Keep fixtures minimal: the test shows the image runs and serves, not that it
   does its job.
 - `consumers`: the product(s) from admission (d).
+- Do not add `staging.visibility: public`. Staging is private by default;
+  making an image public is the owner's decision. If the owner asks for it,
+  it is only for rebuilds of open-source software.
 - Leave `redhat.componentId` as the placeholder. A person fills it in step 6.
 
 In the Containerfile:
@@ -64,7 +68,10 @@ In the Containerfile:
   `go.mod`, as `tag@sha256:digest`. Get the digest with
   `docker buildx imagetools inspect docker.io/library/golang:<version>`.
 - The main package directory and any `-ldflags` upstream uses for its version.
-- Labels: `summary`, `description`, `org.opencontainers.image.licenses`.
+- Labels (ADR-009): `summary`, `description`, `io.openshift.tags` and
+  `org.opencontainers.image.licenses` must equal `image.yaml`; the image test
+  compares them. Leave the labels that use `${...}` build arguments alone: the
+  build fills in the commit, date and base digest.
 - `/licenses`: copy every licence and notice file upstream ships.
 - Anything else upstream's image contains that the binary needs at run time
   (config files, templates). Do not add packages: the build has no network.
@@ -88,7 +95,7 @@ The `images` workflow builds and checks the new image. Read each stage:
 | Fetch | The tag does not point at the pinned commit | Re-check the tag; do not edit the commit to make it pass |
 | Prefetch | Hermeto cannot resolve the dependencies | Check `build.prefetch` and that upstream has a lockfile |
 | Build | Wrong package path, or a Go version older than `go.mod` needs | Fix the Containerfile. The build cannot download a toolchain |
-| Image test | A label, licence file or the start-up command is wrong | Fix the Containerfile or `test.command` |
+| Image test | A label, licence file or the start-up command is wrong. Each wrong label is named with the expected value | Fix the Containerfile or `image.yaml` so they agree |
 | Smoke test | The pod was rejected, did not become Ready, or did not answer. The log shows the pod's events and output | If it writes to a path, that path needs a volume in real deployments: say so in the PR. If it needs a dependency, add a fixture. Do not relax the pod's security settings |
 | CVE gate | Fixable CRITICAL or HIGH vulnerabilities | Use the `fix-cve` skill |
 | Preflight | The image would not pass Red Hat certification | Read the failed check's name; fix the Containerfile |

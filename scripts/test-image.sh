@@ -45,19 +45,24 @@ present() { # <description> <value>
   fi
 }
 
-name=$(get .name)
-label() { cfg ".Config.Labels[\"$1\"]"; }
 
-# Labels Red Hat certification requires (preflight HasRequiredLabel), tied to image.yaml
-check "label name" "$(label name)" "stakater/$name"
-check "label version" "$(label version)" "$(get .upstream.version)"
-check "label org.opencontainers.image.revision" "$(label org.opencontainers.image.revision)" "$(get .upstream.commit)"
-check "label org.opencontainers.image.licenses" "$(label org.opencontainers.image.licenses)" "$(get .upstream.license)"
-# The release label must be the release this build was given (ADR-002 rule 3).
-[ -z "${RELEASE:-}" ] || check "label release" "$(label release)" "$RELEASE"
-for l in vendor release summary description maintainer; do
-  present "label $l" "$(label "$l")"
-done
+# Labels (ADR-009): Red Hat's required ones, what built the image, what is
+# inside it and what it is based on. Checked against image.yaml, this checkout's
+# commit and the base digest pinned in the Containerfile.
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+tmp=$(mktemp -d)
+printf '%s' "$INSPECT" | jq '.[0].Config.Labels // {}' >"$tmp/labels.json"
+printf '%s' "$JSON" >"$tmp/image.json"
+vcs=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
+if [ -n "$vcs" ] && [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then vcs="$vcs-dirty"; fi
+base=$(sed -n 's/^ARG BASE_TAG=.*@\(sha256:[a-f0-9]*\)$/\1/p' "$DIR/Containerfile")
+if EXPECT_RELEASE="${RELEASE:-}" EXPECT_VCS_REF="$vcs" EXPECT_BASE_DIGEST="$base" \
+  "$ROOT/scripts/check-labels.sh" "$tmp/labels.json" "$tmp/image.json"; then
+  :
+else
+  failures=$((failures + 1))
+fi
+rm -rf "$tmp"
 
 check "architecture" "$(cfg .Architecture)" "amd64"
 

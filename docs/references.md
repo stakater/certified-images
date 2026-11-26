@@ -82,6 +82,16 @@ Don't copy: apko/Wolfi as the runtime base. Red Hat certification needs UBI.
 | kind for a throwaway cluster in CI | kind.sigs.k8s.io ✅ (ran 2026-11-26) | `scripts/smoke-kind.sh` |
 | A check must be shown to fail: negative fixtures beside every gate | Our own rule (docs/method.md), not copied | `tests/`, `make test-hermetic`, `make test-smoke` |
 
+## 9. Image labels (added 2026-11-26)
+| What we copy | Where | Used in |
+|---|---|---|
+| The 14 pre-defined keys and their meanings. `source` is the "URL to get source code for building the image" | OCI image-spec `annotations.md` ✅ | ADR-009 |
+| Required labels `name`, `vendor`, `version`, `release`, `summary`, `description`, `maintainer`; trademark check on `name`, `vendor`, `maintainer` | preflight `has_required_labels.go`, `has_prohibited_labels.go` ✅ (source read) | ADR-009 §1 |
+| `build-date`, `vcs-ref`, `vcs-type`, `url`, `io.k8s.*`, `io.openshift.tags`, and `org.opencontainers.image.revision` equal to `vcs-ref` | Labels on `registry.access.redhat.com/ubi9/go-toolset` ✅ (inspected) | ADR-009 §2, §5 |
+| `source` pointing at the directory that builds the image; `created`, `title`, `url`, `vendor`, `authors` | Labels on `cgr.dev/chainguard/static` ✅ (inspected) | ADR-009 §2, §5 |
+
+Not readable: Red Hat's partner labelling guidance (docs.redhat.com refused automated access) and Iron Bank's label requirements (site unreachable). ⚠️ ADR-009 §6 depends on the first.
+
 ## Gaps: decisions with no reference (flagged as risk)
 - Partner Connect component per image, and export questionnaire batching. Red Hat process; no public prior art.
 - Using one `image.yaml` for container and xpkg kinds is our own schema.

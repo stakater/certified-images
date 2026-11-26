@@ -2,8 +2,8 @@
 #
 # OpenCost queries Prometheus at start-up and exits unless Prometheus reports at
 # least one running scrape job. This is a Prometheus that scrapes only itself.
-# It is Ready only once that first scrape is in, so the image under test never
-# starts before the answer it needs exists. It runs under the same restricted
+# It is Ready only once it has a few seconds of scrape history, so the image
+# under test never starts before the answer it needs exists. It runs under the same restricted
 # settings as the image under test.
 apiVersion: v1
 kind: ConfigMap
@@ -49,12 +49,16 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
           readinessProbe:
-            # Ready when the "up" query has a sample, not merely when the server listens.
+            # Ready when "up" already had a sample 5 seconds ago, not merely when
+            # the server listens or the first scrape lands. OpenCost asks for
+            # "up" at the current time truncated to a whole second and exits if
+            # the answer is empty, so a sample that is only milliseconds old can
+            # be missed. Five seconds of history removes that race.
             exec:
               command:
                 - sh
                 - -c
-                - wget -qO- 'http://localhost:9090/api/v1/query?query=up' | grep -q '"value"'
+                - wget -qO- 'http://localhost:9090/api/v1/query?query=up%20offset%205s' | grep -q '"value"'
             periodSeconds: 2
           volumeMounts:
             - { name: data, mountPath: /prometheus }

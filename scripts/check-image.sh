@@ -162,5 +162,30 @@ if ! [[ "$smoke_port" =~ ^[0-9]+$ ]] || [ "$smoke_port" -lt 1 ] || [ "$smoke_por
 fi
 [[ "$smoke_path" == /* ]] || err 14 "smoke.path must be an HTTP path that answers 2xx when the image is healthy (starting with /), got '$smoke_path'"
 
+# rule 15: the label policy (ADR-009). The Containerfile must set every label
+# the policy lists, or the image inherits the base's; and image.yaml must give
+# the catalog tags. scripts/check-labels.sh checks the values on the built image.
+if ! printf '%s' "$JSON" | jq -e '(.tags // []) | type == "array" and length > 0 and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9-]*$"))' >/dev/null; then
+  err 15 "tags must be a non-empty list of lowercase slugs; they become io.openshift.tags (ADR-009)"
+fi
+for label in name vendor maintainer version release summary description \
+  io.k8s.display-name io.k8s.description io.openshift.tags \
+  org.opencontainers.image.title org.opencontainers.image.description org.opencontainers.image.vendor \
+  org.opencontainers.image.version org.opencontainers.image.licenses org.opencontainers.image.source \
+  org.opencontainers.image.revision org.opencontainers.image.created org.opencontainers.image.url \
+  org.opencontainers.image.base.name org.opencontainers.image.base.digest \
+  vcs-ref vcs-type build-date url \
+  com.stakater.upstream.repo com.stakater.upstream.version com.stakater.upstream.commit; do
+  grep -Eq "^(LABEL)?[[:space:]]+${label//./\\.}=" "$CF" || err 15 "Containerfile does not set the label '$label' (ADR-009)"
+done
+
+# rule 16: staging visibility is public or private; absent means private
+# (ADR-002 rev 6). Declaring public is a decision, made in a reviewed PR.
+visibility=$(get .staging.visibility)
+case "$visibility" in
+  "" | public | private) ;;
+  *) err 16 "staging.visibility must be 'public' or 'private' (default private), got '$visibility'" ;;
+esac
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

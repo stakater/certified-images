@@ -6,6 +6,7 @@
 #   publishable  true | false   (to Red Hat; staging does not depend on it)
 #   reason       why not, when false
 #   staging_repository   where every build is staged (always printed)
+#   staging_visibility   public | private (default private)
 #   component_id, suffix, version, repository   (repository: Red Hat's, when publishable)
 #
 # An image whose redhat.componentId is still the placeholder is not publishable.
@@ -36,6 +37,9 @@ version=$(get .upstream.version)
 echo "suffix=$suffix"
 echo "version=$version"
 echo "staging_repository=$STAGING/$(get .name)"
+# Private unless image.yaml declares otherwise (ADR-002 rev 6).
+visibility=$(get .staging.visibility)
+echo "staging_visibility=${visibility:-private}"
 case "$id" in
   "" | TODO*)
     echo "publishable=false"

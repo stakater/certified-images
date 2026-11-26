@@ -102,6 +102,15 @@ promoted to Red Hat.*
   engine, and that it passes Red Hat's static checks. Neither proves it serves
   requests, runs with a read-only root filesystem, or works under an SCC.
 
+**Story P.2c — images carry correct labels** 🔨 *(approved 2026-11-26; decision: [ADR-009](adr/ADR-009-image-labels.md))*
+*As someone inspecting an image, or a scanner reading it, I want its labels to say
+who built it, from which commit, on what base and when, so that I am not told
+UBI's build date and Red Hat's commit.*
+- **Done:** ADR-009 is merged; every image sets the labels it lists; the build
+  passes the build commit, build date and base digest; `check-labels.sh` fails
+  an image whose labels are missing, wrong or still inherited from the base;
+  the scaffold template has them.
+
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
 mirror, so that showback works without internet access.*

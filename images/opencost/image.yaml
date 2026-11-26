@@ -9,6 +9,9 @@ description: >-
   upstream source on Red Hat Universal Base Image and certified for OpenShift.
   Used by Multi-Tenant Operator FinOps/showback.
 
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [opencost, cost, finops, kubernetes]
+
 upstream:
   repo: https://github.com/opencost/opencost
   # renovate: datasource=github-tags depName=opencost/opencost
@@ -59,6 +62,12 @@ redhat:
   # Per-image registry secrets: RH_REGISTRY_USER_OPENCOST, RH_REGISTRY_PASSWORD_OPENCOST
   # (the Partner Connect API key is one shared secret for all images)
   secretSuffix: OPENCOST
+
+# Staging visibility on GHCR (ADR-002 rev 6). Public on purpose, decided by the
+# owner on 2026-11-26: this is a rebuild of Apache-2.0 software on UBI, which
+# may be redistributed. Images of Stakater's own code must stay private.
+staging:
+  visibility: public
 
 consumers:
   - multi-tenant-operator   # CSV relatedImages + RELATED_IMAGE_OPENCOST, by digest

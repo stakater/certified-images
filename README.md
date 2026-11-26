@@ -14,6 +14,7 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | [005](docs/adr/ADR-005-artifact-kinds-crossplane.md) | `kind: container / xpkg`; SCO Crossplane wrappers (Proposed) |
 | [006](docs/adr/ADR-006-stakater-owned-upstreams.md) | Our own repos carry `Containerfile.ubi` + call the reusable workflow (Proposed) |
 | [007](docs/adr/ADR-007-build-platform.md) | GitHub Actions; Konflux re-evaluated when a trigger fires |
+| [009](docs/adr/ADR-009-image-labels.md) | Image labels: what built it, what is inside, what it is based on (Proposed) |
 | [008](docs/adr/ADR-008-supply-chain-evidence.md) | SBOMs, cosign, provenance, CVE gate + daily re-scan, OpenVEX exceptions |
 
 ## Status
@@ -35,13 +36,13 @@ Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost:v1.121.5-1` (`sha256:efce362b…`). ⚠️ The package was created **public**; an org admin must make it private ([docs/setup.md](docs/setup.md), step 1a) | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged as `v1.121.5-1`; later releases follow each merge | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
 
 ### Two registries
 
 | Registry | What it holds | Who uses it |
 |---|---|---|
-| `ghcr.io/stakater/ubi/<name>` (staging) | Every build that passes the checks. Visible to the Stakater organisation only | Stakater teams, for testing |
+| `ghcr.io/stakater/ubi/<name>` (staging) | Every build that passes the checks. Private by default; an image may declare `staging.visibility: public` in `image.yaml` (open-source rebuilds only) | Stakater teams, for testing |
 | `registry.connect.redhat.com/stakater/<name>` (certified) | The same digest, after Red Hat certification | Anything shipped to a customer. A certified operator bundle must reference this one, never GHCR |
 
 How we work: [docs/method.md](docs/method.md).
@@ -251,7 +252,7 @@ On a pull request, per image:
 2. **Patch**: apply `patches/*.patch`. Fails if a patch touches anything but dependency manifests and lockfiles.
 3. **Prefetch** dependencies with Hermeto. This is the only step that uses the network.
 4. **Build** with `--network=none`, for `linux/amd64`.
-5. **Test** the image: labels match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
+5. **Test** the image: labels follow the label policy (ADR-009) and match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
 6. **Smoke test**: run it as a pod on a throwaway local cluster that enforces restricted pod security, with an arbitrary UID, a read-only root filesystem and no capabilities. It must become Ready, answer on its declared port and path, and not restart.
 7. **Scan**: syft SBOM of the image, Hermeto SBOM of the inputs, trivy gate on fixable CRITICAL and HIGH.
 8. **Preflight dry run**: Red Hat's certification checks against a throwaway local registry. Nothing is submitted.
@@ -304,7 +305,7 @@ With Claude Code: `/add-image <name> <owner/repo> <tag>`. By hand, the same step
 
 1. **Admission** (ADR-002 rule 1). All four must hold: no Red Hat image we may ship, a permissive licence, a maintained upstream, and a Stakater product that deploys it.
 2. **Scaffold:** `scripts/new-image.sh <name> <owner/repo> <tag>`. It pins the tag's commit and writes `images/<name>/` from a template. Only Go upstreams have a template today.
-3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`.
+3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, tags, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`.
 4. **`make verify`** until it passes. It rejects the scaffold as generated.
 5. **Open a PR.** CI builds the image offline, tests it, scans it and runs Red Hat's checks as a dry run. If the CVE gate fails, see `.claude/skills/fix-cve/SKILL.md`.
 6. **Human steps for certification:** create the Partner Connect component (Container image, **UBI**, **Red Hat Container Registry**), put its ID in `image.yaml`, submit the export questionnaire, add the repository secrets.
@@ -321,7 +322,7 @@ The full procedure, with what each CI failure means, is in `.claude/skills/add-i
 ⚠️ **Not run yet.** Nothing is signed until the first publish. These are the commands the first publish must be checked with, from a machine outside CI: first against the staging reference, later against Red Hat's public pull spec. They become documentation only after that.
 
 ```
-REF=<registry>/<repository>@sha256:<digest>   # staging: ghcr.io/stakater/ubi/<name>@sha256:...  (log in first: the package is not public)
+REF=<registry>/<repository>@sha256:<digest>   # staging: ghcr.io/stakater/ubi/<name>@sha256:...  (log in first if the image's staging is private)
 ID='^https://github.com/stakater/certified-images/\.github/workflows/build-certify\.yaml@refs/heads/main$'
 ISSUER=https://token.actions.githubusercontent.com
 
@@ -342,7 +343,7 @@ Checked by running it (2026-11-25):
 - All tool images and GitHub actions are pinned by digest or commit.
 - **What the smoke test found about OpenCost** (2026-11-26). It runs as an arbitrary UID with a read-only root filesystem and no capabilities. Inside a cluster it exits at start-up unless it has read access to the Kubernetes API and a Prometheus that already reports a running scrape job. It tries to create `/var/configs` and falls back to memory when it cannot. A product deploying it needs RBAC, a reachable Prometheus, and a writable volume at `/var/configs` if that state should persist.
 - Staging to GHCR (2026-11-26): the workflow token can create `ghcr.io/stakater/ubi/<name>`; push, keyless signing, SBOM attestations and provenance all ran. `gh attestation verify` from outside CI confirms the provenance was signed by `build-certify.yaml` on `main`.
-- **A package created by this public repository is public by default.** The pipeline now fails if a staging package can be pulled anonymously.
+- **A package created by this public repository is public by default.** Each image declares its staging visibility (private unless stated), and the pipeline fails if a package is more open than declared.
 
 Still unverified:
 - [ ] **That an image works on OpenShift itself.** The smoke test runs on a local Kubernetes cluster with restricted pod security, which approximates OpenShift's `restricted-v2`. It does not exercise OpenShift's SCC admission, its UID ranges, SELinux or FIPS mode. Level 2 of story P.2b runs the same test on a real OpenShift cluster.

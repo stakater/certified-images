@@ -127,6 +127,10 @@ smoke-port-not-a-number|image.yaml|s/^  port: 8080/  port: http/|14
 smoke-port-out-of-range|image.yaml|s/^  port: 8080/  port: 70000/|14
 smoke-path-relative|image.yaml|s#^  path: /healthz#  path: healthz#|14
 smoke-missing|image.yaml|/^smoke:/,/^  args:/d|14
+tags-missing|image.yaml|/^tags:/d|15
+visibility-unknown|image.yaml|s/^consumers: \[\]/staging: {visibility: internal}/|16
+tags-not-slugs|image.yaml|s/^tags: .*/tags: ["Not A Slug"]/|15
+label-missing-in-containerfile|Containerfile|/org.opencontainers.image.base.digest/d|15
 CASES
 
 dir=$(mutate from-stage-alias Containerfile 's#^COPY --from=build /out /out#COPY --from=build /out /out#')
@@ -202,14 +206,14 @@ expect_fail "new-image: missing arguments fail" "" new_image only-a-name
 expect_fail "new-image: refuses a name that is not a lowercase slug" "lowercase" new_image Bad_Name example/annotated v1.0.0
 
 # The scaffold is deliberately incomplete: the licence is TODO, the start-up
-# test command is empty and the smoke test has no port. check-image must flag
-# exactly those three.
+# test command is empty, the smoke test has no port and there are no tags.
+# check-image must flag exactly those four.
 scaffold_out=$(cd "$SANDBOX" && scripts/check-image.sh images/annotated 2>&1)
 scaffold_rules=$(printf '%s\n' "$scaffold_out" | grep -Eo ': rule [0-9]+:' | sort -u | tr -d ':\n')
-if [ "$scaffold_rules" = " rule 11 rule 14 rule 4" ]; then
-  ok "new-image: scaffold fails only rule 4 (licence), 11 (test command) and 14 (smoke test)"
+if [ "$scaffold_rules" = " rule 11 rule 14 rule 15 rule 4" ]; then
+  ok "new-image: scaffold fails only rule 4 (licence), 11 (test command), 14 (smoke test) and 15 (tags)"
 else
-  ko "new-image: scaffold fails only rules 4, 11 and 14" "got: '$scaffold_rules'
+  ko "new-image: scaffold fails only rules 4, 11, 14 and 15" "got: '$scaffold_rules'
 $scaffold_out"
 fi
 
@@ -462,11 +466,16 @@ staging_not_called_certified() {
   ! printf '%s\n' "$out" | grep '^staging_repository=' | grep -qi certified
 }
 expect_pass "publish-plan: the staging path does not say 'certified'" staging_not_called_certified
+d=$(plan_image placeholder TODO-PARTNER-CONNECT-COMPONENT-ID)
+expect_pass "publish-plan: staging is private unless image.yaml says otherwise" plan_has "$d" "staging_visibility=private"
+printf 'staging:\n  visibility: public\n' >>"$d/image.yaml"
+expect_pass "publish-plan: a declared public image is reported as public" plan_has "$d" "staging_visibility=public"
 
-# ------------------------------------------------------ assert-not-public.sh
-# Staging packages must not be anonymously pullable (ADR-002 rev 5). A stub
-# curl stands in for the registry: STUB_TOKEN_BODY is the token endpoint's
-# answer, STUB_CODE the HTTP status of the anonymous tags request.
+# ------------------------------------------------------ assert-visibility.sh
+# A staging package's real visibility must not be more open than image.yaml
+# declares (ADR-002 rev 6). A stub curl stands in for the registry:
+# STUB_TOKEN_BODY is the token endpoint's answer, STUB_CODE the HTTP status of
+# the anonymous tags request.
 STUB_BIN="$TMP/stub-bin"
 mkdir -p "$STUB_BIN"
 cat >"$STUB_BIN/curl" <<'STUB'
@@ -478,19 +487,36 @@ esac
 exit "${STUB_CURL_RC:-0}"
 STUB
 chmod +x "$STUB_BIN/curl"
-not_public() { # <token body> <http code> [curl rc]
-  STUB_TOKEN_BODY=$1 STUB_CODE=$2 STUB_CURL_RC=${3:-0} PATH="$STUB_BIN:$PATH" \
-    scripts/assert-not-public.sh ghcr.io/stakater/ubi/example
+visibility() { # <declared> <token body> <http code> [curl rc]
+  STUB_TOKEN_BODY=$2 STUB_CODE=$3 STUB_CURL_RC=${4:-0} PATH="$STUB_BIN:$PATH" \
+    scripts/assert-visibility.sh ghcr.io/stakater/ubi/example "$1"
 }
-expect_pass "assert-not-public: anonymous access refused (401) passes" not_public '{"token":"t"}' 401
-expect_pass "assert-not-public: anonymous access denied (403) passes" not_public '{"token":"t"}' 403
-expect_pass "assert-not-public: a registry that gives no anonymous token passes" not_public '{"errors":[{"code":"DENIED"}]}' 401
-expect_pass "assert-not-public: a package that does not exist yet (404) passes" not_public '{"token":"t"}' 404
-expect_fail "assert-not-public: anonymous access allowed (200) fails" "PUBLIC" not_public '{"token":"t"}' 200
-expect_fail "assert-not-public: an unexpected status fails, it is not assumed private" "could not tell" not_public '{"token":"t"}' 500
-expect_fail "assert-not-public: a network failure fails, it is not assumed private" "could not tell" not_public '' 000 7
-expect_fail "assert-not-public: a repository outside ghcr.io is refused" "ghcr.io" \
-  env PATH="$STUB_BIN:$PATH" scripts/assert-not-public.sh quay.io/x/y
+TOK='{"token":"t"}'
+# declared | http code | pass or the text the failure must contain
+while IFS='|' read -r declared code want; do
+  [ -z "$declared" ] && continue
+  if [ "$want" = "pass" ]; then
+    expect_pass "assert-visibility: declared $declared, registry answers $code: passes" visibility "$declared" "$TOK" "$code"
+  else
+    expect_fail "assert-visibility: declared $declared, registry answers $code: fails" "$want" visibility "$declared" "$TOK" "$code"
+  fi
+done <<'CASES'
+private|401|pass
+private|403|pass
+private|404|pass
+private|200|PUBLIC
+private|500|could not tell
+public|200|pass
+public|404|pass
+public|401|pass
+public|500|could not tell
+CASES
+expect_pass "assert-visibility: declared public but actually private is allowed, with a warning" \
+  bash -c "STUB_TOKEN_BODY='$TOK' STUB_CODE=401 PATH='$STUB_BIN':\$PATH scripts/assert-visibility.sh ghcr.io/stakater/ubi/example public 2>&1 | grep -qi 'declared public'"
+expect_fail "assert-visibility: a network failure fails, it is never assumed private" "could not tell" visibility private '' 000 7
+expect_fail "assert-visibility: an unknown declaration is refused" "public or private" visibility internal "$TOK" 401
+expect_fail "assert-visibility: a repository outside ghcr.io is refused" "ghcr.io" \
+  env PATH="$STUB_BIN:$PATH" scripts/assert-visibility.sh quay.io/x/y private
 
 # ------------------------------------------------------------ copy-image.sh
 # The stub prints STUB_OUT for every call; copy-image reads the destination
@@ -556,6 +582,53 @@ expect_pass "changed-images: several changed images are listed, sorted" \
   changed "$(rev HEAD~1)" "$(rev HEAD)" '["images/a","images/c"]'
 expect_pass "changed-images: an all-zero before lists every image" \
   changed 0000000000000000000000000000000000000000 "$(rev HEAD)" '["images/a","images/c"]'
+
+# ----------------------------------------------------------- check-labels.sh
+# ADR-009. Pure: labels as JSON, image.yaml as JSON, no container engine.
+LBL="$TMP/labels"
+mkdir -p "$LBL"
+scripts/yaml-to-json.sh "$FIX/image-good/image.yaml" >"$LBL/image.json"
+labels_ok() { scripts/check-labels.sh "$1" "$LBL/image.json"; }
+expect_pass "check-labels: a correctly labelled image passes" \
+  env EXPECT_RELEASE=3 EXPECT_VCS_REF=89abcdef0123456789abcdef0123456789abcdef \
+  EXPECT_BASE_DIGEST=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+  scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
+
+# name | jq mutation of the good labels | text the failure must contain
+# (the table is split on "|", so a mutation must not use jq's pipe)
+while IFS='|' read -r name mutation pattern; do
+  [ -z "$name" ] && continue
+  jq "$mutation" "$FIX/labels/good.json" >"$LBL/case.json" || ko "check-labels: bad test mutation for '$name'"
+  expect_fail "check-labels: $name fails" "$pattern" labels_ok "$LBL/case.json"
+done <<'CASES'
+a missing required label|del(.summary)|summary
+a wrong image name|.name = "stakater/other"|name
+a Red Hat trademark in the vendor|.vendor = "Red Hat Stakater"|trademark
+a version that is not upstream's|.version = "v9.9.9"|version
+the OCI source pointing at upstream|.["org.opencontainers.image.source"] = "https://github.com/example/example"|org.opencontainers.image.source
+a revision that is not a commit|. + {"org.opencontainers.image.revision": "main", "vcs-ref": "main"}|org.opencontainers.image.revision: must be the commit
+revision and vcs-ref disagreeing|.["vcs-ref"] = "0000000000000000000000000000000000000000"|vcs-ref
+vcs-ref inherited from the base (differs from revision)|.["vcs-ref"] = "8a43e4168bacb15fdb64420d59822ce86c32934d"|vcs-ref
+a build date that is not RFC 3339|. + {"build-date": "yesterday", "org.opencontainers.image.created": "yesterday"}|created: must be an RFC 3339
+build-date and created disagreeing|.["build-date"] = "2026-11-20T18:10:41Z"|build-date
+the url inherited from Red Hat|.url = "https://catalog.redhat.com/en/search?searchType=containers"|url
+io.openshift.tags inherited from UBI|.["io.openshift.tags"] = "minimal rhel9"|io.openshift.tags
+a missing upstream commit label|del(.["com.stakater.upstream.commit"])|com.stakater.upstream.commit
+an upstream commit that is not the pinned one|.["com.stakater.upstream.commit"] = "ffffffffffffffffffffffffffffffffffffffff"|com.stakater.upstream.commit
+a licence that differs from image.yaml|.["org.opencontainers.image.licenses"] = "MIT"|licenses
+a missing base digest|del(.["org.opencontainers.image.base.digest"])|base.digest
+a base digest that is not a digest|.["org.opencontainers.image.base.digest"] = "latest"|base.digest
+a missing base name|del(.["org.opencontainers.image.base.name"])|base.name
+a description that differs from image.yaml|.description = "something else"|description
+a title that does not say whose build it is|.["org.opencontainers.image.title"] = "Example"|title
+CASES
+expect_fail "check-labels: a release that is not the one this build was given fails" "release" \
+  env EXPECT_RELEASE=4 scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
+expect_fail "check-labels: a build commit that is not this checkout fails" "revision" \
+  env EXPECT_VCS_REF=1111111111111111111111111111111111111111 scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
+expect_fail "check-labels: a base digest that is not the pinned one fails" "base.digest" \
+  env EXPECT_BASE_DIGEST=sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
+  scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
 
 # ------------------------------------------------------------ smoke-test.sh
 # The pod the smoke test runs, rendered without a cluster. Each line is a
