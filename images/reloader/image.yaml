@@ -16,7 +16,9 @@ tags: [reloader, configmap, secret, rolling-upgrade, kubernetes]
 upstream:
   repo: https://github.com/stakater/Reloader
   # Reloader v2 only. v1 is a different design and is not built here. v2 has
-  # no final release yet, so this pins a beta.
+  # no final release yet, so this pins a beta. Betas are published on purpose
+  # (owner's decision, 2026-11-26): GA is some way off, and the beta is how the
+  # Red Hat path gets exercised. The patch SLA applies to the newest beta only.
   # renovate: datasource=github-tags depName=stakater/Reloader
   version: v2.0.0-beta.3
   commit: 5f3fdbdc7c5021e1fd9ba9fe134f5ac6ee29d4ac   # tag must dereference to this (ADR-003)
@@ -38,8 +40,9 @@ smoke:
   path: /readyz
 
 redhat:
-  # Partner Connect container component (fill after creating the component)
-  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+  # Partner Connect container component "Reloader (operator) container"
+  componentId: "6af9776fa950dc6dbfa4d693"
+  # Push target: quay.io/redhat-isv-containers/6af9776fa950dc6dbfa4d693
   # Per-image registry secrets: RH_REGISTRY_USER_RELOADER, RH_REGISTRY_PASSWORD_RELOADER
   secretSuffix: RELOADER
 

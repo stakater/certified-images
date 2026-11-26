@@ -127,6 +127,7 @@ mirror, so that showback works without internet access.*
 - Make the pipeline callable from another repository (ADR-006), then move Reloader's build to the Reloader repository.
 - A functional-test contract: an image may ship a test the pipeline runs against the cluster once the image is up (for Reloader: change a ConfigMap, assert the workload rolled). The same test runs on the local cluster and on OpenShift.
 - Split the pipeline into build-and-stage, test-on-OpenShift, promote-to-Red-Hat, once the OpenShift runner exists (P.2b level 2).
+- Reloader Console (Partner Connect component `6af9ac3f8523cfd9714c7645`) and Reloader Gateway (`6af9ac54ad3a47dac910b90b`): components exist; their source repository and release tags are not yet known to this repo.
 - Dex as the second third-party image.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).
 - Spike: build one Crossplane provider both ways and read the pod spec (ADR-005 open question 1).
