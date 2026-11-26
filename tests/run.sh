@@ -127,6 +127,9 @@ smoke-port-not-a-number|image.yaml|s/^  port: 8080/  port: http/|14
 smoke-port-out-of-range|image.yaml|s/^  port: 8080/  port: 70000/|14
 smoke-path-relative|image.yaml|s#^  path: /healthz#  path: healthz#|14
 smoke-missing|image.yaml|/^smoke:/,/^  args:/d|14
+tags-missing|image.yaml|/^tags:/d|15
+tags-not-slugs|image.yaml|s/^tags: .*/tags: ["Not A Slug"]/|15
+label-missing-in-containerfile|Containerfile|/org.opencontainers.image.base.digest/d|15
 CASES
 
 dir=$(mutate from-stage-alias Containerfile 's#^COPY --from=build /out /out#COPY --from=build /out /out#')
@@ -202,14 +205,14 @@ expect_fail "new-image: missing arguments fail" "" new_image only-a-name
 expect_fail "new-image: refuses a name that is not a lowercase slug" "lowercase" new_image Bad_Name example/annotated v1.0.0
 
 # The scaffold is deliberately incomplete: the licence is TODO, the start-up
-# test command is empty and the smoke test has no port. check-image must flag
-# exactly those three.
+# test command is empty, the smoke test has no port and there are no tags.
+# check-image must flag exactly those four.
 scaffold_out=$(cd "$SANDBOX" && scripts/check-image.sh images/annotated 2>&1)
 scaffold_rules=$(printf '%s\n' "$scaffold_out" | grep -Eo ': rule [0-9]+:' | sort -u | tr -d ':\n')
-if [ "$scaffold_rules" = " rule 11 rule 14 rule 4" ]; then
-  ok "new-image: scaffold fails only rule 4 (licence), 11 (test command) and 14 (smoke test)"
+if [ "$scaffold_rules" = " rule 11 rule 14 rule 15 rule 4" ]; then
+  ok "new-image: scaffold fails only rule 4 (licence), 11 (test command), 14 (smoke test) and 15 (tags)"
 else
-  ko "new-image: scaffold fails only rules 4, 11 and 14" "got: '$scaffold_rules'
+  ko "new-image: scaffold fails only rules 4, 11, 14 and 15" "got: '$scaffold_rules'
 $scaffold_out"
 fi
 
@@ -556,6 +559,53 @@ expect_pass "changed-images: several changed images are listed, sorted" \
   changed "$(rev HEAD~1)" "$(rev HEAD)" '["images/a","images/c"]'
 expect_pass "changed-images: an all-zero before lists every image" \
   changed 0000000000000000000000000000000000000000 "$(rev HEAD)" '["images/a","images/c"]'
+
+# ----------------------------------------------------------- check-labels.sh
+# ADR-009. Pure: labels as JSON, image.yaml as JSON, no container engine.
+LBL="$TMP/labels"
+mkdir -p "$LBL"
+scripts/yaml-to-json.sh "$FIX/image-good/image.yaml" >"$LBL/image.json"
+labels_ok() { scripts/check-labels.sh "$1" "$LBL/image.json"; }
+expect_pass "check-labels: a correctly labelled image passes" \
+  env EXPECT_RELEASE=3 EXPECT_VCS_REF=89abcdef0123456789abcdef0123456789abcdef \
+  EXPECT_BASE_DIGEST=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+  scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
+
+# name | jq mutation of the good labels | text the failure must contain
+# (the table is split on "|", so a mutation must not use jq's pipe)
+while IFS='|' read -r name mutation pattern; do
+  [ -z "$name" ] && continue
+  jq "$mutation" "$FIX/labels/good.json" >"$LBL/case.json" || ko "check-labels: bad test mutation for '$name'"
+  expect_fail "check-labels: $name fails" "$pattern" labels_ok "$LBL/case.json"
+done <<'CASES'
+a missing required label|del(.summary)|summary
+a wrong image name|.name = "stakater/other"|name
+a Red Hat trademark in the vendor|.vendor = "Red Hat Stakater"|trademark
+a version that is not upstream's|.version = "v9.9.9"|version
+the OCI source pointing at upstream|.["org.opencontainers.image.source"] = "https://github.com/example/example"|org.opencontainers.image.source
+a revision that is not a commit|. + {"org.opencontainers.image.revision": "main", "vcs-ref": "main"}|org.opencontainers.image.revision: must be the commit
+revision and vcs-ref disagreeing|.["vcs-ref"] = "0000000000000000000000000000000000000000"|vcs-ref
+vcs-ref inherited from the base (differs from revision)|.["vcs-ref"] = "8a43e4168bacb15fdb64420d59822ce86c32934d"|vcs-ref
+a build date that is not RFC 3339|. + {"build-date": "yesterday", "org.opencontainers.image.created": "yesterday"}|created: must be an RFC 3339
+build-date and created disagreeing|.["build-date"] = "2026-11-20T18:10:41Z"|build-date
+the url inherited from Red Hat|.url = "https://catalog.redhat.com/en/search?searchType=containers"|url
+io.openshift.tags inherited from UBI|.["io.openshift.tags"] = "minimal rhel9"|io.openshift.tags
+a missing upstream commit label|del(.["com.stakater.upstream.commit"])|com.stakater.upstream.commit
+an upstream commit that is not the pinned one|.["com.stakater.upstream.commit"] = "ffffffffffffffffffffffffffffffffffffffff"|com.stakater.upstream.commit
+a licence that differs from image.yaml|.["org.opencontainers.image.licenses"] = "MIT"|licenses
+a missing base digest|del(.["org.opencontainers.image.base.digest"])|base.digest
+a base digest that is not a digest|.["org.opencontainers.image.base.digest"] = "latest"|base.digest
+a missing base name|del(.["org.opencontainers.image.base.name"])|base.name
+a description that differs from image.yaml|.description = "something else"|description
+a title that does not say whose build it is|.["org.opencontainers.image.title"] = "Example"|title
+CASES
+expect_fail "check-labels: a release that is not the one this build was given fails" "release" \
+  env EXPECT_RELEASE=4 scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
+expect_fail "check-labels: a build commit that is not this checkout fails" "revision" \
+  env EXPECT_VCS_REF=1111111111111111111111111111111111111111 scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
+expect_fail "check-labels: a base digest that is not the pinned one fails" "base.digest" \
+  env EXPECT_BASE_DIGEST=sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
+  scripts/check-labels.sh "$FIX/labels/good.json" "$LBL/image.json"
 
 # ------------------------------------------------------------ smoke-test.sh
 # The pod the smoke test runs, rendered without a cluster. Each line is a

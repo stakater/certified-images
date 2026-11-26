@@ -252,7 +252,7 @@ On a pull request, per image:
 2. **Patch**: apply `patches/*.patch`. Fails if a patch touches anything but dependency manifests and lockfiles.
 3. **Prefetch** dependencies with Hermeto. This is the only step that uses the network.
 4. **Build** with `--network=none`, for `linux/amd64`.
-5. **Test** the image: labels match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
+5. **Test** the image: labels follow the label policy (ADR-009) and match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
 6. **Smoke test**: run it as a pod on a throwaway local cluster that enforces restricted pod security, with an arbitrary UID, a read-only root filesystem and no capabilities. It must become Ready, answer on its declared port and path, and not restart.
 7. **Scan**: syft SBOM of the image, Hermeto SBOM of the inputs, trivy gate on fixable CRITICAL and HIGH.
 8. **Preflight dry run**: Red Hat's certification checks against a throwaway local registry. Nothing is submitted.
@@ -305,7 +305,7 @@ With Claude Code: `/add-image <name> <owner/repo> <tag>`. By hand, the same step
 
 1. **Admission** (ADR-002 rule 1). All four must hold: no Red Hat image we may ship, a permissive licence, a maintained upstream, and a Stakater product that deploys it.
 2. **Scaffold:** `scripts/new-image.sh <name> <owner/repo> <tag>`. It pins the tag's commit and writes `images/<name>/` from a template. Only Go upstreams have a template today.
-3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`.
+3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, tags, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`.
 4. **`make verify`** until it passes. It rejects the scaffold as generated.
 5. **Open a PR.** CI builds the image offline, tests it, scans it and runs Red Hat's checks as a dry run. If the CVE gate fails, see `.claude/skills/fix-cve/SKILL.md`.
 6. **Human steps for certification:** create the Partner Connect component (Container image, **UBI**, **Red Hat Container Registry**), put its ID in `image.yaml`, submit the export questionnaire, add the repository secrets.

@@ -35,22 +35,47 @@ FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
 # renovate: datasource=github-tags depName=opencost/opencost
 ARG UPSTREAM_VERSION=v1.121.5
 ARG UPSTREAM_COMMIT=32dbf049c84c66db1efeb9fc9a98e5042f076cf1
-ARG RELEASE=1
+ARG RELEASE=0
+# Set by scripts/build-image.sh (ADR-009): the commit of this repository that
+# built the image, when, and the digest of the base it sits on.
+ARG VCS_REF=unknown
+ARG BUILD_DATE=1970-01-01T00:00:00Z
+ARG BASE_DIGEST=unknown
+# Declared before the first FROM; repeated here so the labels can use them.
+ARG BASE_REGISTRY
+ARG BASE_IMAGE
 
-# Red Hat certification: required labels (HasRequiredLabel)
+# Labels (ADR-009). scripts/check-labels.sh checks every one against image.yaml
+# and the build. Without them the image would inherit UBI's build date, commit,
+# URL and tags.
 LABEL name="stakater/opencost" \
       vendor="Stakater AB" \
       maintainer="Stakater AB <support@stakater.com>" \
       version="${UPSTREAM_VERSION}" \
       release="${RELEASE}" \
       summary="OpenCost cost model rebuilt from source on Red Hat UBI" \
-      description="OpenCost cost-allocation engine for Kubernetes, rebuilt by Stakater from the upstream source on Red Hat Universal Base Image." \
+      description="OpenCost cost-allocation engine for Kubernetes, rebuilt by Stakater from the upstream source on Red Hat Universal Base Image and certified for OpenShift. Used by Multi-Tenant Operator FinOps/showback." \
       io.k8s.display-name="Stakater build of OpenCost" \
-      io.k8s.description="OpenCost cost-allocation engine for Kubernetes (Stakater UBI build)" \
-      org.opencontainers.image.source="https://github.com/opencost/opencost" \
-      org.opencontainers.image.revision="${UPSTREAM_COMMIT}" \
+      io.k8s.description="OpenCost cost-allocation engine for Kubernetes, rebuilt by Stakater from the upstream source on Red Hat Universal Base Image and certified for OpenShift. Used by Multi-Tenant Operator FinOps/showback." \
+      io.openshift.tags="opencost,cost,finops,kubernetes" \
+      org.opencontainers.image.title="Stakater build of OpenCost" \
+      org.opencontainers.image.description="OpenCost cost-allocation engine for Kubernetes, rebuilt by Stakater from the upstream source on Red Hat Universal Base Image and certified for OpenShift. Used by Multi-Tenant Operator FinOps/showback." \
+      org.opencontainers.image.vendor="Stakater AB" \
+      org.opencontainers.image.version="${UPSTREAM_VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.version="${UPSTREAM_VERSION}"
+      org.opencontainers.image.source="https://github.com/stakater/certified-images" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.url="https://github.com/stakater/certified-images/tree/main/images/opencost" \
+      org.opencontainers.image.base.name="${BASE_REGISTRY}/${BASE_IMAGE}" \
+      org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+      vcs-ref="${VCS_REF}" \
+      vcs-type="git" \
+      build-date="${BUILD_DATE}" \
+      url="https://github.com/stakater/certified-images/tree/main/images/opencost" \
+      com.stakater.upstream.repo="https://github.com/opencost/opencost" \
+      com.stakater.upstream.version="${UPSTREAM_VERSION}" \
+      com.stakater.upstream.commit="${UPSTREAM_COMMIT}"
 
 # No microdnf update here (no network in the build). OS fixes arrive via
 # Renovate base-digest bumps (ADR-003 §5, ADR-004). ubi-minimal ships CA certs.

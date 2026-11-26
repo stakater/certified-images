@@ -27,5 +27,15 @@ mkdir -p "$CTX"
 "$ROOT/scripts/prefetch.sh" "$DIR" "$CTX"
 cp "$DIR/Containerfile" "$CTX/Containerfile"
 
-"$ENGINE" build --network=none --platform "$PLATFORM" --build-arg "RELEASE=${RELEASE:-0}" -f "$CTX/Containerfile" -t "$REF" "$CTX" >&2
+# What built it, when, and on what base (ADR-009). The commit is this
+# repository's; "-dirty" marks a build from uncommitted changes.
+VCS_REF=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)
+if [ "$VCS_REF" != "unknown" ] && [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+  VCS_REF="$VCS_REF-dirty"
+fi
+BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+BASE_DIGEST=$(sed -n 's/^ARG BASE_TAG=.*@\(sha256:[a-f0-9]*\)$/\1/p' "$DIR/Containerfile")
+
+"$ENGINE" build --network=none --platform "$PLATFORM" --build-arg "RELEASE=${RELEASE:-0}" \
+  --build-arg "VCS_REF=$VCS_REF" --build-arg "BUILD_DATE=$BUILD_DATE" --build-arg "BASE_DIGEST=$BASE_DIGEST" -f "$CTX/Containerfile" -t "$REF" "$CTX" >&2
 echo "$REF"

@@ -9,6 +9,9 @@ description: >-
   upstream source on Red Hat Universal Base Image and certified for OpenShift.
   Used by Multi-Tenant Operator FinOps/showback.
 
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [opencost, cost, finops, kubernetes]
+
 upstream:
   repo: https://github.com/opencost/opencost
   # renovate: datasource=github-tags depName=opencost/opencost

@@ -24,6 +24,7 @@ displayName: Stakater build of ${NAME}
 summary: TODO one-line summary
 description: >-
   TODO description. Rebuilt by Stakater from upstream source on Red Hat UBI.
+tags: []   # TODO catalog search terms, lowercase slugs (ADR-009)
 upstream:
   repo: https://github.com/${REPO}
   # renovate: datasource=github-tags depName=${REPO}
@@ -51,5 +52,5 @@ sed -e "s#__NAME__#${NAME}#g" -e "s#__REPO__#${REPO}#g" \
   "$TEMPLATE" > "$DIR/Containerfile"
 echo "Scaffolded $DIR (${VERSION} @ ${COMMIT})."
 echo "Now fill in every TODO in $DIR/image.yaml and $DIR/Containerfile:"
-echo "  licence, test.command, smoke (port and path), GO_TAG (match upstream's go.mod), main package path and ldflags, labels, /licenses files, build.prefetch."
+echo "  licence, tags, test.command, smoke (port and path), GO_TAG (match upstream's go.mod), main package path and ldflags, labels, /licenses files, build.prefetch."
 echo "Then run: make verify"

@@ -50,7 +50,7 @@ status, image names or version numbers here; they go stale.
 2. `docs/method.md` — how we work: story → plan → red → green → verify → audit.
 3. `docs/roadmap.md` — the stories and their lifecycle state.
 4. `docs/adr/` — the decisions. ADR-001 is how we record them; ADR-002 is the
-   umbrella; 003–008 are its parts. Check each ADR's status line.
+   umbrella; 003–009 are its parts. Check each ADR's status line.
 5. `docs/references.md` — the prior art each decision copies.
 
 ## Workflow (the short form of `docs/method.md`)
@@ -189,6 +189,7 @@ scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only p
 scripts/prefetch.sh            Hermeto prefetch (the only networked build step)
 scripts/build-image.sh         fetch -> prefetch -> build with the network off
 scripts/test-image.sh          labels, /licenses, non-root, starts
+scripts/check-labels.sh        the label policy (ADR-009), checked on the built image
 scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
 scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
