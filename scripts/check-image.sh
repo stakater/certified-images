@@ -153,5 +153,14 @@ case "$component" in
   *) [[ "$component" =~ ^[a-f0-9]{24}$ ]] || err 13 "redhat.componentId must be the TODO placeholder or 24 hex characters, got '$component'" ;;
 esac
 
+# rule 14: a smoke test, so the image is run as a pod and asked to serve
+# (scripts/smoke-test.sh). Starting with --help proves very little.
+smoke_port=$(get .smoke.port)
+smoke_path=$(get .smoke.path)
+if ! [[ "$smoke_port" =~ ^[0-9]+$ ]] || [ "$smoke_port" -lt 1 ] || [ "$smoke_port" -gt 65535 ]; then
+  err 14 "smoke.port must be the port the image serves HTTP on (1-65535), got '$smoke_port'"
+fi
+[[ "$smoke_path" == /* ]] || err 14 "smoke.path must be an HTTP path that answers 2xx when the image is healthy (starting with /), got '$smoke_path'"
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

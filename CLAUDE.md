@@ -139,6 +139,7 @@ levels need a build, so they run in CI and locally with `make image IMAGE=<name>
 | Static | Containerfile lint, shell lint, `image.yaml` rules, Renovate config, workflow lint | hadolint, shellcheck, `scripts/check-image.sh`, `renovate-config-validator`, actionlint |
 | Unit | Scripts and check logic against fixtures; every check is shown to fail on a broken input | `tests/run.sh` (plain bash) |
 | Image | The built image has the required labels, `/licenses`, non-root user, and starts as an arbitrary UID | `scripts/test-image.sh`, `scripts/preflight-dry-run.sh` |
+| Cluster | The image runs as a pod under restricted pod security (arbitrary UID, read-only root, no capabilities), becomes Ready and serves. On a local kind cluster this approximates OpenShift; it is not OpenShift | `scripts/smoke-test.sh`, `make smoke`, `make test-smoke` |
 | End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight → publish rehearsal against a local registry; a separate job proves builds cannot reach the network | `build-certify.yaml`, `make test-hermetic` |
 
 Rules for working with it:
@@ -150,6 +151,9 @@ Rules for working with it:
 - **A new rule starts as a failing case in `tests/run.sh`**, then the rule.
 - A check that cannot run must fail. Never make one skip silently.
 - Scripts must run on bash 3.2 (macOS) and bash 5 (CI).
+- Never say an image "works on OpenShift" on the strength of the smoke test.
+  Until it runs on a real OpenShift cluster, say "passes the smoke test under
+  restricted pod security".
 - `make image` under emulation on an Apple Silicon Mac is very slow. Use the
   PR's CI run as the image-level evidence and say that you did.
 - For anything the checks do not cover, say plainly what was checked by hand
@@ -178,6 +182,7 @@ images/<name>/image.yaml       one manifest per image: upstream tag + commit, pr
 images/<name>/Containerfile    hermetic build stage + parameterised, digest-pinned UBI runtime stage
 images/<name>/patches/*.patch  optional dependency-only patches, each listed under deviations
 images/<name>/vex.openvex.json optional CVE exceptions
+images/<name>/smoke/*.yaml     optional fixtures the smoke test deploys first (RBAC, a stub dependency)
 scripts/new-image.sh           scaffolds images/<name>/ from scripts/templates/
 scripts/check-image.sh         our own rules for one image directory
 scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches
@@ -187,6 +192,8 @@ scripts/test-image.sh          labels, /licenses, non-root, starts
 scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
 scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
+scripts/smoke-test.sh          runs the image as a pod under restricted pod security and asks it to serve
+scripts/smoke-kind.sh          the same on a throwaway kind cluster; test-smoke.sh proves it can fail
 scripts/publish-plan.sh        staging repository, and whether and where to publish at Red Hat
 scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
 scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag

@@ -1,0 +1,7 @@
+# Fixture for scripts/test-smoke.sh: an image that writes to its root
+# filesystem at start-up. It runs fine in a plain container engine and must
+# FAIL the smoke test, which runs it with a read-only root filesystem.
+ARG BASE_TAG=latest@sha256:08d4c70f1baf6537a0728656cf7942d561e74a35916509d205b6519861266352
+FROM registry.access.redhat.com/ubi9/ubi-minimal:${BASE_TAG}
+USER 1001
+ENTRYPOINT ["sh", "-c", "echo started > /etc/started && sleep 3600"]

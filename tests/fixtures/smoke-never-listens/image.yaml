@@ -1,0 +1,5 @@
+kind: container
+name: smoke-never-listens
+smoke:
+  port: 8080
+  path: /healthz

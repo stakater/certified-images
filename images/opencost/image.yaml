@@ -38,6 +38,20 @@ test:
   # Start-up test: the image must exit 0 when run with these arguments.
   command: ["--help"]
 
+# Smoke test (scripts/smoke-test.sh): run as a pod under restricted pod
+# security and require this endpoint to answer. smoke/ holds what OpenCost
+# needs to start in a cluster: read access to the Kubernetes API, and a
+# Prometheus that reports a running scrape job. OpenCost also tries to create
+# /var/configs and falls back to memory on a read-only filesystem.
+smoke:
+  port: 9003
+  path: /healthz
+  env:
+    # OpenCost queries Prometheus at start-up and exits without an answer.
+    # smoke/prometheus.yaml runs an empty one in the test namespace. The smoke
+    # test shows the image runs and serves; cost data is the product's test.
+    PROMETHEUS_SERVER_ENDPOINT: http://prometheus:9090
+
 redhat:
   # Partner Connect container component (fill after creating the component)
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"

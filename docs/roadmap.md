@@ -92,7 +92,10 @@ promoted to Red Hat.*
   runs the check, and cleans up; promotion to Red Hat does not run unless it
   passes; pull requests run the same test on a local cluster with restricted
   pod security as an approximation.
-- **Open before approval:** which OpenShift cluster, and who provides its
+- **State:** level 1 is done: every PR runs the smoke test on a local cluster
+  under restricted pod security, and two broken fixtures prove it can fail.
+  Level 2 (a real OpenShift cluster, gating promotion) is not built.
+- **Open for level 2:** which OpenShift cluster, and who provides its
   service-account credentials and a GHCR pull secret.
 - **Why this exists:** today nothing runs the image on OpenShift. The checks
   prove it starts with `--help` as an arbitrary UID in a plain container

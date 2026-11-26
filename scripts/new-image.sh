@@ -34,6 +34,9 @@ build:
   prefetch: '{"type": "gomod", "path": "."}'   # typed fetchers only (ADR-003)
 test:
   command: []   # TODO arguments that make the image start and exit 0, e.g. ["--help"]
+smoke:
+  port: 0        # TODO the port the image serves HTTP on
+  path: /healthz # TODO a path that answers 2xx when the image is healthy
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
   secretSuffix: ${SUFFIX}
@@ -48,5 +51,5 @@ sed -e "s#__NAME__#${NAME}#g" -e "s#__REPO__#${REPO}#g" \
   "$TEMPLATE" > "$DIR/Containerfile"
 echo "Scaffolded $DIR (${VERSION} @ ${COMMIT})."
 echo "Now fill in every TODO in $DIR/image.yaml and $DIR/Containerfile:"
-echo "  licence, test.command, GO_TAG (match upstream's go.mod), main package path and ldflags, labels, /licenses files, build.prefetch."
+echo "  licence, test.command, smoke (port and path), GO_TAG (match upstream's go.mod), main package path and ldflags, labels, /licenses files, build.prefetch."
 echo "Then run: make verify"

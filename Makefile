@@ -9,7 +9,7 @@ ENGINE ?= docker
 # Tool images are pinned in tools.env, the one place Renovate maintains.
 include tools.env
 export HADOLINT_IMAGE SHELLCHECK_IMAGE ACTIONLINT_IMAGE RENOVATE_IMAGE YQ_IMAGE \
-	HERMETO_IMAGE SYFT_IMAGE TRIVY_IMAGE PREFLIGHT_IMAGE REGISTRY_IMAGE CRANE_IMAGE
+	HERMETO_IMAGE SYFT_IMAGE TRIVY_IMAGE PREFLIGHT_IMAGE REGISTRY_IMAGE CRANE_IMAGE KIND_NODE_IMAGE
 
 # What each target checks. Tests override these to point at broken fixtures.
 CONTAINERFILES  ?= $(wildcard images/*/Containerfile)
@@ -21,7 +21,7 @@ IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
 RUN = $(ENGINE) run --rm -v "$(CURDIR)":/work:ro -w /work
 
 .PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test \
-	build test-image scan preflight image test-hermetic publish-rehearsal
+	build test-image scan preflight image test-hermetic publish-rehearsal smoke test-smoke
 
 verify: lint check-renovate check-images test ## run every check
 	@echo "verify: all checks passed"
@@ -62,13 +62,19 @@ REF       ?= localhost/stakater/$(notdir $(IMAGE_DIR)):build
 # workflow computes it from the registry; local and PR builds use 0.
 RELEASE   ?= 0
 
-image: build test-image scan preflight ## build, test, scan and dry-run certify one image
+image: build test-image smoke scan preflight ## build, test, scan and dry-run certify one image
 
 build: ## pinned source -> Hermeto prefetch -> offline build
 	ENGINE=$(ENGINE) CTX="$(CTX)" RELEASE="$(RELEASE)" scripts/build-image.sh $(IMAGE_DIR)
 
 test-image: ## labels, /licenses, non-root, starts
 	ENGINE=$(ENGINE) RELEASE="$(RELEASE)" scripts/test-image.sh $(REF) $(IMAGE_DIR)
+
+smoke: ## run the image as a pod on a throwaway local cluster under restricted pod security
+	ENGINE=$(ENGINE) scripts/smoke-kind.sh $(REF) $(IMAGE_DIR)
+
+test-smoke: ## prove the smoke test rejects images that do not work
+	ENGINE=$(ENGINE) scripts/test-smoke.sh
 
 scan: ## SBOMs + CVE gate (fixable CRITICAL and HIGH)
 	ENGINE=$(ENGINE) scripts/scan-image.sh $(REF) $(IMAGE_DIR) "$(CTX)"
