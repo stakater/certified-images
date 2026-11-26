@@ -2,16 +2,21 @@
 #
 # Always: pinned source -> Hermeto prefetch -> offline build -> start-up test ->
 # SBOMs + CVE gate -> preflight dry run.
-# With publish=true, and only for an image that has a Partner Connect component
-# ID: push to Red Hat's partner registry -> cosign signature -> SBOM and
-# provenance attestations -> preflight --submit.
+#
+# With publish=true, two more stages (ADR-002 rev 5):
+#   1. Stage:   push to GHCR (ghcr.io/stakater/ubi/<name>), sign, attest.
+#               Every image, with the workflow's own token.
+#   2. Red Hat: copy the same digest to Red Hat's partner registry, sign,
+#               attest, preflight --submit. Only for an image that has a Partner
+#               Connect component ID and whose secrets exist.
 #
 # One job on purpose: the image that was tested is the image that is pushed.
 # Every step is a script or make target, so `make image IMAGE=<name>` runs the
 # build half on a laptop (ADR-007).
 #
 # No `permissions` block: the caller decides what a run may do. Pull-request
-# callers grant read only. The publish caller adds id-token and attestations.
+# callers grant read only. The publish caller adds packages, id-token and
+# attestations.
 name: build-certify
 
 on:
@@ -22,7 +27,7 @@ on:
         required: true
         type: string
       publish:
-        description: Push, sign, attest and submit for certification. Needs the image's secrets.
+        description: Stage to GHCR, and publish to Red Hat when the image is ready for it.
         required: false
         type: boolean
         default: false
@@ -47,40 +52,62 @@ jobs:
         id: plan
         run: scripts/publish-plan.sh "$IMAGE_DIR" | tee -a "$GITHUB_OUTPUT"
 
-      - name: Decide whether this run publishes
+      - name: Decide what this run publishes
         id: mode
         env:
           WANT_PUBLISH: ${{ inputs.publish }}
           PUBLISHABLE: ${{ steps.plan.outputs.publishable }}
           REASON: ${{ steps.plan.outputs.reason }}
+          SUFFIX: ${{ steps.plan.outputs.suffix }}
+          # Used only to see which secrets exist. Values are never printed.
+          RH_USER: ${{ secrets[format('RH_REGISTRY_USER_{0}', steps.plan.outputs.suffix)] }}
+          RH_PASSWORD: ${{ secrets[format('RH_REGISTRY_PASSWORD_{0}', steps.plan.outputs.suffix)] }}
+          RH_PYXIS: ${{ secrets.RH_PYXIS_TOKEN }}
         run: |
-          publish=false
-          if [ "$WANT_PUBLISH" = "true" ] && [ "$PUBLISHABLE" = "true" ]; then publish=true; fi
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
-          if [ "$WANT_PUBLISH" = "true" ] && [ "$publish" = "false" ]; then
-            echo "::warning title=Not published::$IMAGE_DIR was built and checked but not published: $REASON"
-            echo "### $IMAGE_DIR: built and checked, **not published**" >> "$GITHUB_STEP_SUMMARY"
-            echo "$REASON" >> "$GITHUB_STEP_SUMMARY"
+          stage=false
+          redhat=false
+          why=""
+          if [ "$WANT_PUBLISH" = "true" ]; then
+            stage=true
+            if [ "$PUBLISHABLE" != "true" ]; then
+              why="$REASON"
+            else
+              missing=""
+              [ -n "$RH_USER" ] || missing="$missing RH_REGISTRY_USER_$SUFFIX"
+              [ -n "$RH_PASSWORD" ] || missing="$missing RH_REGISTRY_PASSWORD_$SUFFIX"
+              [ -n "$RH_PYXIS" ] || missing="$missing RH_PYXIS_TOKEN"
+              if [ -z "$missing" ]; then redhat=true; else why="missing repository secrets:$missing (docs/setup.md, step 6)"; fi
+            fi
+          fi
+          echo "stage=$stage" >> "$GITHUB_OUTPUT"
+          echo "redhat=$redhat" >> "$GITHUB_OUTPUT"
+          if [ "$stage" = "true" ] && [ "$redhat" = "false" ]; then
+            echo "::warning title=Not published to Red Hat::$IMAGE_DIR is staged to GHCR only: $why"
+            {
+              echo "### $IMAGE_DIR: staged to GHCR, **not published to Red Hat**"
+              echo "$why"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Log in to Red Hat's partner registry
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+      - name: Log in to GHCR (staging)
+        if: ${{ steps.mode.outputs.stage == 'true' }}
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
-          registry: quay.io
-          username: ${{ secrets[format('RH_REGISTRY_USER_{0}', steps.plan.outputs.suffix)] }}
-          password: ${{ secrets[format('RH_REGISTRY_PASSWORD_{0}', steps.plan.outputs.suffix)] }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Release number
         id: release
         env:
-          PUBLISH: ${{ steps.mode.outputs.publish }}
-          REPOSITORY: ${{ steps.plan.outputs.repository }}
+          STAGE: ${{ steps.mode.outputs.stage }}
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
+          # The staging registry is the single source of release numbers.
           release=0
-          if [ "$PUBLISH" = "true" ]; then
-            release=$(scripts/list-tags.sh "$REPOSITORY" | scripts/next-release.sh "$VERSION")
+          if [ "$STAGE" = "true" ]; then
+            release=$(scripts/list-tags.sh "$STAGING" | scripts/next-release.sh "$VERSION")
           fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "tag=$VERSION-$release" >> "$GITHUB_OUTPUT"
@@ -103,49 +130,106 @@ jobs:
         run: make preflight IMAGE_DIR="$IMAGE_DIR"
 
       - name: Publish rehearsal (local registry, no credentials)
-        if: ${{ steps.mode.outputs.publish != 'true' }}
+        if: ${{ steps.mode.outputs.stage != 'true' }}
         run: make publish-rehearsal IMAGE_DIR="$IMAGE_DIR"
 
-      # ------------------------------------------------------------ publish
-      # Everything below is outward-facing and runs only when publishing.
+      # ------------------------------------------------- stage 1: GHCR
+      # Outward-facing: pushes an image and writes a public signature-log entry.
 
-      - name: Push
-        id: push
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+      - name: Stage to GHCR
+        id: stage
+        if: ${{ steps.mode.outputs.stage == 'true' }}
         env:
-          REPOSITORY: ${{ steps.plan.outputs.repository }}
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           # A release tag is never overwritten (ADR-002 rule 3).
-          scripts/assert-tag-free.sh "$REPOSITORY" "$TAG"
-          ref=$(scripts/push-image.sh "localhost/stakater/$(basename "$IMAGE_DIR"):build" "$REPOSITORY" "$TAG")
+          scripts/assert-tag-free.sh "$STAGING" "$TAG"
+          ref=$(scripts/push-image.sh "localhost/stakater/$(basename "$IMAGE_DIR"):build" "$STAGING" "$TAG")
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+        if: ${{ steps.mode.outputs.stage == 'true' }}
         uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
 
-      - name: Sign the digest and attest the SBOMs
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+      - name: Sign and attest the staged image
+        if: ${{ steps.mode.outputs.stage == 'true' }}
         env:
-          REF: ${{ steps.push.outputs.ref }}
+          REF: ${{ steps.stage.outputs.ref }}
         run: |
           evidence=".ctx/$(basename "$IMAGE_DIR")/evidence"
           cosign sign --yes "$REF"
           cosign attest --yes --type spdxjson --predicate "$evidence/sbom.image.spdx.json" "$REF"
           cosign attest --yes --type spdxjson --predicate "$evidence/sbom.deps.spdx.json" "$REF"
 
-      - name: Attest build provenance
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+      - name: Attest build provenance (staged image)
+        if: ${{ steps.mode.outputs.stage == 'true' }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.plan.outputs.staging_repository }}
+          subject-digest: ${{ steps.stage.outputs.digest }}
+          push-to-registry: true
+
+      - name: Summary (staged)
+        if: ${{ steps.mode.outputs.stage == 'true' }}
+        env:
+          REF: ${{ steps.stage.outputs.ref }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          {
+            echo "### $IMAGE_DIR staged as \`$TAG\`"
+            echo
+            echo "Pushed, signed and attested: \`$REF\`"
+            echo
+            echo "For testing only. Customer-facing manifests reference Red Hat's registry."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------- stage 2: Red Hat
+      # Outward-facing: publishes to Red Hat and submits for certification.
+
+      - name: Log in to Red Hat's partner registry
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: quay.io
+          username: ${{ secrets[format('RH_REGISTRY_USER_{0}', steps.plan.outputs.suffix)] }}
+          password: ${{ secrets[format('RH_REGISTRY_PASSWORD_{0}', steps.plan.outputs.suffix)] }}
+
+      - name: Promote the staged digest to Red Hat
+        id: redhat
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        env:
+          STAGED: ${{ steps.stage.outputs.ref }}
+          REPOSITORY: ${{ steps.plan.outputs.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          scripts/assert-tag-free.sh "$REPOSITORY" "$TAG"
+          # Copy by digest: what was staged and tested is what gets certified.
+          ref=$(scripts/copy-image.sh "$STAGED" "$REPOSITORY" "$TAG")
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign and attest the Red Hat image
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        env:
+          REF: ${{ steps.redhat.outputs.ref }}
+        run: |
+          evidence=".ctx/$(basename "$IMAGE_DIR")/evidence"
+          cosign sign --yes "$REF"
+          cosign attest --yes --type spdxjson --predicate "$evidence/sbom.image.spdx.json" "$REF"
+          cosign attest --yes --type spdxjson --predicate "$evidence/sbom.deps.spdx.json" "$REF"
+
+      - name: Attest build provenance (Red Hat image)
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ steps.plan.outputs.repository }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.redhat.outputs.digest }}
           push-to-registry: true
 
       - name: Submit to Red Hat for certification
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
         env:
           # One Partner Connect API key for every component (ADR-002 rule 5).
           PFLT_PYXIS_API_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
@@ -154,16 +238,16 @@ jobs:
           COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
         run: scripts/preflight-submit.sh "$REPOSITORY:$TAG" "$COMPONENT_ID"
 
-      - name: Summary
-        if: ${{ steps.mode.outputs.publish == 'true' }}
+      - name: Summary (Red Hat)
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
         env:
-          REF: ${{ steps.push.outputs.ref }}
+          REF: ${{ steps.redhat.outputs.ref }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           {
-            echo "### $IMAGE_DIR published as \`$TAG\`"
+            echo "### $IMAGE_DIR published to Red Hat as \`$TAG\`"
             echo
-            echo "Pushed, signed, attested and submitted: \`$REF\`"
+            echo "Copied by digest, signed, attested and submitted: \`$REF\`"
             echo
             echo "Consumers pin the digest, never the tag."
           } >> "$GITHUB_STEP_SUMMARY"

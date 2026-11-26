@@ -9,8 +9,10 @@ Stakater product deploys and turns it into an image that product can ship:
    network during the build;
 2. **checked**: it starts, it carries the labels and licences Red Hat requires,
    and it has no fixable CRITICAL or HIGH vulnerabilities;
-3. **certified** in Red Hat Partner Connect;
-4. **published** with an SBOM, a signature and build provenance.
+3. **staged** to a registry Stakater controls, with an SBOM, a signature and
+   build provenance, so products can test it;
+4. **certified** in Red Hat Partner Connect and published there, as the same
+   digest.
 
 **Why it exists.** Stakater products (Multi-Tenant Operator first, then SCO and
 Reloader Enterprise) must install in air-gapped OpenShift clusters, and a Red
@@ -108,11 +110,14 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 
 ## Boundaries
 
-- **Merging to `main` publishes.** A merge that touches an image whose
-  Partner Connect component ID is set pushes it to Red Hat's registry, signs it
-  and submits it for certification (`publish.yaml`). Setting a component ID in
-  `image.yaml` is therefore the act that makes an image publishable; never do
-  it without being asked. Never merge, push to `main`, or trigger a
+- **Merging to `main` publishes.** A merge that touches an image pushes it to
+  the staging registry (`ghcr.io/stakater/ubi/<name>`) and signs it. If the
+  image has a Partner Connect component ID and its secrets exist, the same
+  digest is also copied to Red Hat's registry and submitted for certification
+  (`publish.yaml`, ADR-002 rev 5). Never set a component ID without being asked.
+- **Staging is not certified.** An image on GHCR has passed our checks, not Red
+  Hat's. Never call it certified, never make the package public, and never put
+  a GHCR reference in anything shipped to a customer. Never merge, push to `main`, or trigger a
   publish without explicit authorization. Work on a feature branch and open a PR.
 - **Secrets by reference only.** Partner Connect and registry credentials are
   GitHub secrets named from `image.yaml` (`redhat.secretSuffix`). Never read,
@@ -182,9 +187,10 @@ scripts/test-image.sh          labels, /licenses, non-root, starts
 scripts/scan-image.sh          SBOMs + CVE gate; check-vex.sh checks exceptions
 scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
-scripts/publish-plan.sh        is this image publishable, and to which repository
+scripts/publish-plan.sh        staging repository, and whether and where to publish at Red Hat
 scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
-scripts/push-image.sh          pushes and prints the digest reference
+scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag
+scripts/copy-image.sh          promotes a digest from staging to Red Hat's registry, unchanged
 scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched

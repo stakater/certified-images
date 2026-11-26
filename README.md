@@ -17,22 +17,30 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | [008](docs/adr/ADR-008-supply-chain-evidence.md) | SBOMs, cosign, provenance, CVE gate + daily re-scan, OpenVEX exceptions |
 
 ## Status
-**Pull requests build and check every image end to end. The publish path is written but has never run: no image is published or certified yet.**
+**Pull requests build and check every image end to end. The publish path is written; its first real run has not happened yet, so no image is staged, published or certified.**
 
 | Stage | State |
 |---|---|
 | Checks on the repo itself (`make verify`) | Runs on every PR |
 | Pinned source → Hermeto prefetch → offline build | Runs on every PR |
 | Start-up test, SBOMs, CVE gate, preflight dry run | Runs on every PR |
-| Release numbering and push | Rehearsed on every PR against a throwaway local registry |
-| Login to Red Hat's registry, signing, attestations, `preflight --submit` | Written, **never run**. They need the secrets below and run for the first time on the first real publish |
+| Release numbering, push, promotion by digest | Rehearsed on every PR against a throwaway local registry |
+| **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Written, **never run**. Needs no secrets; runs on the next merge that touches an image, or by hand |
+| **Red Hat**: login, copy by digest, signing, `preflight --submit` | Written, **never run**. Needs the secrets in [docs/setup.md](docs/setup.md) |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
 Images:
 
-| Image | Upstream | Builds and passes checks | Published |
-|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | No: waiting for a Partner Connect component ID |
+| Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
+|---|---|---|---|---|
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, not pushed yet | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+
+### Two registries
+
+| Registry | What it holds | Who uses it |
+|---|---|---|
+| `ghcr.io/stakater/ubi/<name>` (staging) | Every build that passes the checks. Visible to the Stakater organisation only | Stakater teams, for testing |
+| `registry.connect.redhat.com/stakater/<name>` (certified) | The same digest, after Red Hat certification | Anything shipped to a customer. A certified operator bundle must reference this one, never GHCR |
 
 How we work: [docs/method.md](docs/method.md).
 
@@ -51,6 +59,7 @@ flowchart LR
   end
   UP["Upstream project<br/>on GitHub"]
   UBI["Red Hat UBI<br/>base image"]
+  GHCR["GHCR staging<br/>ghcr.io/stakater/ubi"]
   RH["Red Hat partner registry<br/>and Partner Connect"]
   SIG["Sigstore<br/>signature log"]
   PROD["Stakater product<br/>MTO, SCO, Reloader"]
@@ -63,7 +72,9 @@ flowchart LR
   TOOLS --> SCR
   REN -.->|opens bump PRs| IMG
   REN -.->|opens bump PRs| TOOLS
-  WF -->|push, submit| RH
+  WF -->|stage every build| GHCR
+  GHCR -->|same digest, when ready| RH
+  GHCR -.->|testing only| PROD
   WF -->|sign, attest| SIG
   RH -->|certified image by digest| PROD
   PROD -->|mirrored by digest| CUST
@@ -133,36 +144,42 @@ sequenceDiagram
 
 ### What a merge to main runs
 
-The same job as above, with these steps added. It publishes only an image whose component ID is set.
+The same job as above, then two stages. Staging needs no secrets. The Red Hat stage runs only when the image has a component ID and its secrets exist.
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant PUB as publish workflow
   participant WF as build-certify workflow
-  participant Q as quay.io partner registry
+  participant GH as GHCR staging registry
   participant SIG as Sigstore
-  participant GHA as GitHub attestations
+  participant Q as Red Hat partner registry
   participant PC as Partner Connect
   participant CAT as Red Hat catalog
 
   PUB->>PUB: changed-images.sh, which images did the merge touch
   PUB->>WF: Call with publish true, for each image
-  WF->>WF: publish-plan.sh, is the component ID set
-  alt no component ID
-    WF-->>PUB: Build and check only, report not published
-  else component ID set
+  WF->>WF: publish-plan.sh, staging path and Red Hat readiness
+  WF->>GH: Log in with the workflow token
+  WF->>GH: list-tags.sh
+  GH-->>WF: Existing tags
+  WF->>WF: next-release.sh gives VERSION-N
+  WF->>WF: Build with that release, then every PR check
+  Note over WF,SIG: Stage 1, every image
+  WF->>GH: assert-tag-free.sh, then push-image.sh
+  GH-->>WF: Digest
+  WF->>SIG: cosign sign the digest, keyless
+  WF->>GH: Attest both SBOMs and the build provenance
+  alt no component ID, or Red Hat secrets missing
+    WF-->>PUB: Staged only, report what is missing
+  else ready for Red Hat
+    Note over WF,CAT: Stage 2, the same digest
     WF->>Q: Log in with the image's registry secrets
-    WF->>Q: list-tags.sh
-    Q-->>WF: Existing tags
-    WF->>WF: next-release.sh gives VERSION-N
-    WF->>WF: Build with that release, then every PR check
-    WF->>Q: push-image.sh
-    Q-->>WF: Digest
-    WF->>SIG: cosign sign the digest, keyless
-    WF->>Q: cosign attest both SBOMs
-    WF->>GHA: Build provenance for the digest
-    WF->>PC: preflight-submit.sh with the API key
+    WF->>Q: copy-image.sh copies the staged digest
+    Q-->>WF: Same digest, or the step fails
+    WF->>SIG: cosign sign that reference
+    WF->>Q: Attest both SBOMs and the build provenance
+    WF->>PC: preflight-submit.sh with the shared API key
     PC-->>CAT: Certified image published
   end
 ```
@@ -218,7 +235,7 @@ tools.env                       # every tool image, pinned by digest; the only p
 tests/                          # tests for the scripts and the checks
 .github/workflows/build-certify.yaml  # the pipeline, as a reusable workflow (ADR-006)
 .github/workflows/images.yaml         # calls it for every image on pull requests (read-only)
-.github/workflows/publish.yaml        # calls it with publish=true on merges to main that touch an image
+.github/workflows/publish.yaml        # calls it with publish=true on merges to main: stage to GHCR, then Red Hat when ready
 .github/workflows/verify.yaml         # make verify on pull requests
 renovate.json                   # upstream tag+commit, UBI digest, toolchain digest, tool images
 docs/                           # vision, method, roadmap, planning docs, ADRs, references
@@ -237,17 +254,24 @@ On a pull request, per image:
 
 A separate job proves a build step cannot reach the network (`make test-hermetic`).
 
-On a merge to `main` that touches an image (`publish.yaml`), the same job continues, for an image that has a Partner Connect component ID:
+On a merge to `main` that touches an image (`publish.yaml`), the same job continues.
 
-8. **Release number**: the next free `<upstream-version>-<release>` tag in the registry.
-9. **Push** to `quay.io/redhat-isv-containers/<componentId>`.
+**Stage 1, every image: GHCR.** Needs no secrets.
+
+8. **Release number**: the next free `<upstream-version>-<release>` tag in the staging repository. The image is built with that release.
+9. **Push** to `ghcr.io/stakater/ubi/<name>`. A tag that already exists is refused.
 10. **Sign** the digest with cosign (keyless), and **attest** both SBOMs and the build provenance.
-11. **Submit** to Red Hat with `preflight --submit`. Partner Connect then publishes the image.
 
-An image without a component ID is built and checked on `main` but not published; the run says so. To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
+**Stage 2, when the image is ready: Red Hat.** Runs only if the image has a Partner Connect component ID and its secrets exist. Otherwise the run says what is missing and stops after stage 1.
+
+11. **Copy the staged digest** to `quay.io/redhat-isv-containers/<componentId>`, with the same tag. The copy fails unless the digest arrives unchanged.
+12. **Sign and attest** that reference.
+13. **Submit** to Red Hat with `preflight --submit`. Partner Connect then publishes the image.
+
+To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
 
 ### Setup and secrets
-The publish path needs one shared repository secret, plus two per image named from `redhat.secretSuffix` in `image.yaml`:
+Staging to GHCR needs no secrets. The Red Hat stage needs one shared repository secret, plus two per image named from `redhat.secretSuffix` in `image.yaml`:
 
 | Secret | How many | What |
 |---|---|---|
@@ -278,7 +302,7 @@ With Claude Code: `/add-image <name> <owner/repo> <tag>`. By hand, the same step
 4. **`make verify`** until it passes. It rejects the scaffold as generated.
 5. **Open a PR.** CI builds the image offline, tests it, scans it and runs Red Hat's checks as a dry run. If the CVE gate fails, see `.claude/skills/fix-cve/SKILL.md`.
 6. **Human steps for certification:** create the Partner Connect component (Container image, **UBI**, **Red Hat Container Registry**), put its ID in `image.yaml`, submit the export questionnaire, add the repository secrets.
-7. **A factory-team member merges.** The merge publishes and submits for certification.
+7. **A factory-team member merges.** The merge stages the image to GHCR. If the component ID and secrets are in place it also publishes to Red Hat and submits for certification; steps 6 and 7 can happen in either order.
 8. **The consuming product pins the published digest** in its CSV `relatedImages`.
 
 The full procedure, with what each CI failure means, is in `.claude/skills/add-image/SKILL.md`.
@@ -288,10 +312,10 @@ The full procedure, with what each CI failure means, is in `.claude/skills/add-i
 - **Crossplane (SCO):** install `stakater/<provider>` packages by digest. Air-gapped customers add an `ImageConfig` with `rewriteImage.prefix` to their mirror (Crossplane ≥ 1.20). This path is Proposed (ADR-005).
 
 ## Verify (customers)
-⚠️ **Not run yet.** Nothing is signed until the first publish. These are the commands the first publish must be checked with, from a machine outside CI, against the public pull spec. They become documentation only after that.
+⚠️ **Not run yet.** Nothing is signed until the first publish. These are the commands the first publish must be checked with, from a machine outside CI: first against the staging reference, later against Red Hat's public pull spec. They become documentation only after that.
 
 ```
-REF=<registry>/<repository>@sha256:<digest>
+REF=<registry>/<repository>@sha256:<digest>   # staging: ghcr.io/stakater/ubi/<name>@sha256:...  (log in first: the package is not public)
 ID='^https://github.com/stakater/certified-images/\.github/workflows/build-certify\.yaml@refs/heads/main$'
 ISSUER=https://token.actions.githubusercontent.com
 
@@ -312,7 +336,7 @@ Checked by running it (2026-11-25):
 - All tool images and GitHub actions are pinned by digest or commit.
 
 Still unverified:
-- [ ] The whole outward-facing publish path: registry login, listing tags on Red Hat's registry (including an empty repository), cosign signing and attestations, provenance, `preflight --submit`. Written and linted, never run.
+- [ ] The whole outward-facing publish path. Staging: whether the workflow token may create the GHCR package, its default visibility, cosign signing and attestations, provenance. Red Hat: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
 - [ ] Renovate keeps current: the UBI and toolchain digests, the upstream tag and commit (in `image.yaml` and the Containerfile together), and the tool images in `tools.env`. The config validates, but the Renovate app has not run on this repo.
 - [ ] OpenCost's outbound TLS to cloud pricing APIs works in a cluster. The CA bundle is present; no request has been made.

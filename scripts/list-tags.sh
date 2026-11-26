@@ -13,16 +13,8 @@ set -euo pipefail
 
 REPO=${1:?usage: list-tags.sh <repository>}
 
-# crane reads credentials from $DOCKER_CONFIG/config.json inside the container.
-args=()
-auth=${REGISTRY_AUTH_FILE:-${DOCKER_CONFIG:-$HOME/.docker}/config.json}
-[ -f "$auth" ] && args+=(-v "$auth:/auth/config.json:ro" -e DOCKER_CONFIG=/auth)
-cmd=(ls)
-[ -n "${REGISTRY_INSECURE:-}" ] && cmd+=(--insecure)
-
 set +e
-out=$("$ENGINE" run --rm ${TOOL_NETWORK:+--network "$TOOL_NETWORK"} ${args[@]+"${args[@]}"} \
-  "$CRANE_IMAGE" "${cmd[@]}" "$REPO" 2>&1)
+out=$(crane ls "$REPO" 2>&1)
 rc=$?
 set -e
 
