@@ -222,7 +222,7 @@ jobs:
           COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
         run: |
           rc=0
-          scripts/rh-registry-login.sh "$COMPONENT_ID" || rc=$?
+          scripts/rh-registry-login.sh "$COMPONENT_ID" "$(basename "$IMAGE_DIR")" || rc=$?
           if [ "$rc" = "0" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           elif [ "$rc" = "3" ]; then

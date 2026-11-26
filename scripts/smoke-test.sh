@@ -15,6 +15,9 @@
 #
 # Passes only if the pod is admitted, becomes Ready, answers
 # http://<pod>:<smoke.port><smoke.path> with success, and has not restarted.
+# If the image ships images/<name>/functional/test.sh, that runs next and must
+# exit 0: it tests what the image does, with TEST_NAMESPACE, TEST_POD,
+# TEST_IMAGE and TEST_TIMEOUT set.
 #
 # The cluster is whatever kubectl points at: a local kind cluster for pull
 # requests (scripts/smoke-kind.sh), an OpenShift cluster later. On kind this
@@ -174,4 +177,20 @@ if [ "$restarts" != "0" ] || [ "$phase" != "Running" ]; then
   fail "the container did not stay up (phase $phase, restarts $restarts)"
 fi
 echo "ok   - still running, no restarts"
-echo "smoke-test: $NAME works on this cluster under restricted pod security"
+
+# The image's own functional test, if it ships one: does it do its job, not
+# just start? Same cluster, same namespace, same restrictions. Its exit status
+# decides (docs/planning/f1-functional-tests.md).
+if [ -d "$DIR/functional" ]; then
+  ftest="$DIR/functional/test.sh"
+  [ -x "$ftest" ] || fail "functional test $ftest is missing or not executable"
+  echo "--- functional test: $ftest"
+  if TEST_NAMESPACE="$NS" TEST_POD=smoke TEST_IMAGE="$REF" TEST_TIMEOUT="${TEST_TIMEOUT:-90}" "$ftest"; then
+    echo "ok   - functional test passed"
+  else
+    fail "functional test failed: the image starts but does not do its job"
+  fi
+  echo "smoke-test: $NAME works and does its job on this cluster under restricted pod security"
+else
+  echo "smoke-test: $NAME works on this cluster under restricted pod security"
+fi

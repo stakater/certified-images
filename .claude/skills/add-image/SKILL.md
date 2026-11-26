@@ -57,6 +57,13 @@ In `image.yaml`:
   namespace. See `images/opencost/smoke/` for RBAC and a stub Prometheus.
   Keep fixtures minimal: the test shows the image runs and serves, not that it
   does its job.
+- If the image is a controller or does something observable in a cluster, add
+  `images/<name>/functional/test.sh`: an executable that, given
+  `TEST_NAMESPACE`, proves the image does its job and exits 0, using only
+  `kubectl` in that namespace. Include a control case (the effect must NOT
+  happen when it should not). Show it fails once by running it where the image
+  is not present, and say so in the PR. See
+  `images/reloader-operator/functional/test.sh`.
 - `consumers`: the product(s) from admission (d).
 - Do not add `staging.visibility: public`. Staging is private by default;
   making an image public is the owner's decision. If the owner asks for it,
@@ -96,6 +103,7 @@ The `images` workflow builds and checks the new image. Read each stage:
 | Prefetch | Hermeto cannot resolve the dependencies | Check `build.prefetch` and that upstream has a lockfile |
 | Build | Wrong package path, or a Go version older than `go.mod` needs | Fix the Containerfile. The build cannot download a toolchain |
 | Image test | A label, licence file or the start-up command is wrong. Each wrong label is named with the expected value | Fix the Containerfile or `image.yaml` so they agree |
+| Functional test | The image starts but does not do its job | Read the test's own message. This is a real defect in the image or its fixtures, not a flaky check |
 | Smoke test | The pod was rejected, did not become Ready, or did not answer. The log shows the pod's events and output | If it writes to a path, that path needs a volume in real deployments: say so in the PR. If it needs a dependency, add a fixture. Do not relax the pod's security settings |
 | CVE gate | Fixable CRITICAL or HIGH vulnerabilities | Use the `fix-cve` skill |
 | Preflight | The image would not pass Red Hat certification | Read the failed check's name; fix the Containerfile |

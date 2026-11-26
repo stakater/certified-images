@@ -232,6 +232,8 @@ images/<name>/image.yaml        # kind, upstream repo+tag+commit, prefetch input
 images/<name>/Containerfile     # hermetic build stage + parameterised, digest-pinned UBI runtime stage
 images/<name>/patches/*.patch   # optional dependency-only patches, each listed under deviations (ADR-002 rule 2)
 images/<name>/vex.openvex.json  # optional CVE exceptions (ADR-008)
+images/<name>/smoke/*.yaml      # optional fixtures the smoke test deploys first
+images/<name>/functional/test.sh # optional test of what the image does, run after the smoke test
 scripts/                        # one script per pipeline step; the same scripts run locally and in CI
 scripts/templates/              # what new-image.sh scaffolds from
 .claude/skills/                 # add-image and fix-cve procedures for Claude Code
@@ -255,7 +257,7 @@ On a pull request, per image:
 3. **Prefetch** dependencies with Hermeto. This is the only step that uses the network.
 4. **Build** with `--network=none`, for `linux/amd64`.
 5. **Test** the image: labels follow the label policy (ADR-009) and match `image.yaml`, `/licenses` is populated, non-root, starts as an arbitrary UID.
-6. **Smoke test**: run it as a pod on a throwaway local cluster that enforces restricted pod security, with an arbitrary UID, a read-only root filesystem and no capabilities. It must become Ready, answer on its declared port and path, and not restart.
+6. **Smoke test**: run it as a pod on a throwaway local cluster that enforces restricted pod security, with an arbitrary UID, a read-only root filesystem and no capabilities. It must become Ready, answer on its declared port and path, and not restart. If the image ships a **functional test** (`images/<name>/functional/test.sh`), that runs next, against the running image: it tests what the image does, not just that it starts.
 7. **Scan**: syft SBOM of the image, Hermeto SBOM of the inputs, trivy gate on fixable CRITICAL and HIGH.
 8. **Preflight dry run**: Red Hat's certification checks against a throwaway local registry. Nothing is submitted.
 
@@ -283,7 +285,7 @@ Staging to GHCR needs no secrets. The Red Hat stage needs **two repository secre
 | Secret | What |
 |---|---|
 | `RH_PYXIS_TOKEN` | Partner Connect API key for submitting certification results. One key covers every component |
-| `RH_REGISTRY_KEYS` | One JSON object holding each component's registry key, keyed by component ID. The username is derived from the component ID |
+| `RH_REGISTRY_KEYS` | One JSON object holding each component's registry key, keyed by component ID, each with the image's name so it is readable. The username is derived from the component ID |
 
 Fetching the registry keys from Red Hat's API with the API key was tried on 2026-11-26 and is not possible; `RH_REGISTRY_KEYS` is how they are held. The `pyxis-probe` workflow shows a component's settings as Red Hat has them, which is useful for checking a new component.
 
@@ -298,6 +300,7 @@ make image IMAGE=opencost    # build, test, scan and dry-run certify one image
 make test-hermetic           # prove a build step cannot reach the network
 make smoke IMAGE=opencost    # run a built image as a pod on a local kind cluster (needs kind and kubectl)
 make test-smoke              # prove the smoke test rejects broken images
+# make smoke also runs the image's functional test, if it has one
 make publish-rehearsal IMAGE=opencost   # release numbering + push against a local registry (needs a built image)
 ```
 
@@ -308,7 +311,7 @@ With Claude Code: `/add-image <name> <owner/repo> <tag>`. By hand, the same step
 
 1. **Admission** (ADR-002 rule 1). All four must hold: no Red Hat image we may ship, a permissive licence, a maintained upstream, and a Stakater product that deploys it.
 2. **Scaffold:** `scripts/new-image.sh <name> <owner/repo> <tag>`. It pins the tag's commit and writes `images/<name>/` from a template. Only Go upstreams have a template today.
-3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, tags, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`.
+3. **Fill in every `TODO`** in `image.yaml` and the Containerfile: licence, tags, start-up test command, smoke test (port and health path), Go version, main package path, labels, licence files. If the image needs something to start (API access, a dependency), add test fixtures in `images/<name>/smoke/`. To test what the image does, add `images/<name>/functional/test.sh`.
 4. **`make verify`** until it passes. It rejects the scaffold as generated.
 5. **Open a PR.** CI builds the image offline, tests it, scans it and runs Red Hat's checks as a dry run. If the CVE gate fails, see `.claude/skills/fix-cve/SKILL.md`.
 6. **Human steps for certification:** create the Partner Connect component (Container image, **UBI**, **Red Hat Container Registry**), put its ID in `image.yaml`, submit the export questionnaire, add the repository secrets.
@@ -350,7 +353,7 @@ Checked by running it (2026-11-25):
 
 Still unverified:
 - [ ] **That an image works on OpenShift itself.** The smoke test runs on a local Kubernetes cluster with restricted pod security, which approximates OpenShift's `restricted-v2`. It does not exercise OpenShift's SCC admission, its UID ranges, SELinux or FIPS mode. Level 2 of story P.2b runs the same test on a real OpenShift cluster.
-- [ ] That an image does its job for a product. The smoke test shows OpenCost starts and serves `/healthz`; it does not check any cost data. That is story P.3.
+- [ ] That OpenCost does its job. It has no functional test: producing cost data needs real metrics, which is story P.3. Reloader has one (a ConfigMap change rolls the workload, an unrelated one does not), so far run only on a local cluster, not on OpenShift.
 - [ ] The Red Hat stage: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
 - [ ] `cosign verify` and `cosign verify-attestation` against a staged image from outside CI. Signing ran in CI without error; only `gh attestation verify` has been run from outside.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
