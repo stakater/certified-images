@@ -17,7 +17,7 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | [008](docs/adr/ADR-008-supply-chain-evidence.md) | SBOMs, cosign, provenance, CVE gate + daily re-scan, OpenVEX exceptions |
 
 ## Status
-**Pull requests build and check every image end to end. The publish path is written; its first real run has not happened yet, so no image is staged, published or certified.**
+**Pull requests build and check every image end to end. Staging to GHCR works: the first image is staged, signed and attested. Nothing is published to Red Hat or certified yet.**
 
 | Stage | State |
 |---|---|
@@ -25,7 +25,7 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | Pinned source → Hermeto prefetch → offline build | Runs on every PR |
 | Start-up test, SBOMs, CVE gate, preflight dry run | Runs on every PR |
 | Release numbering, push, promotion by digest | Rehearsed on every PR against a throwaway local registry |
-| **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Written, **never run**. Needs no secrets; runs on the next merge that touches an image, or by hand |
+| **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Works. First run 2026-11-26. Provenance verified from outside CI with `gh attestation verify`; the `cosign verify` commands have not been run yet |
 | **Red Hat**: login, copy by digest, signing, `preflight --submit` | Written, **never run**. Needs the secrets in [docs/setup.md](docs/setup.md) |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
@@ -33,7 +33,7 @@ Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, not pushed yet | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost:v1.121.5-1` (`sha256:efce362b…`). ⚠️ The package was created **public**; an org admin must make it private ([docs/setup.md](docs/setup.md), step 1a) | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
 
 ### Two registries
 
@@ -334,10 +334,13 @@ Checked by running it (2026-11-25):
 - preflight 1.23.0 uses `--certification-component-id`. A dry run needs a registry, so the pipeline starts a local one.
 - `ubi9/ubi-minimal` ships a CA bundle. `ubi9/ubi-micro` does not, so OpenCost stays on `ubi-minimal` (ADR-004).
 - All tool images and GitHub actions are pinned by digest or commit.
+- Staging to GHCR (2026-11-26): the workflow token can create `ghcr.io/stakater/ubi/<name>`; push, keyless signing, SBOM attestations and provenance all ran. `gh attestation verify` from outside CI confirms the provenance was signed by `build-certify.yaml` on `main`.
+- **A package created by this public repository is public by default.** The pipeline now fails if a staging package can be pulled anonymously.
 
 Still unverified:
 - [ ] **That an image actually works on OpenShift.** No check deploys an image to a cluster. The start-up test runs `--help` in a plain container engine, and preflight is a static inspection. Neither shows that the image serves requests, or runs under OpenShift's restricted security context. Story P.2b in the roadmap.
-- [ ] The whole outward-facing publish path. Staging: whether the workflow token may create the GHCR package, its default visibility, cosign signing and attestations, provenance. Red Hat: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
+- [ ] The Red Hat stage: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
+- [ ] `cosign verify` and `cosign verify-attestation` against a staged image from outside CI. Signing ran in CI without error; only `gh attestation verify` has been run from outside.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
 - [ ] Renovate keeps current: the UBI and toolchain digests, the upstream tag and commit (in `image.yaml` and the Containerfile together), and the tool images in `tools.env`. The config validates, but the Renovate app has not run on this repo.
 - [ ] OpenCost's outbound TLS to cloud pricing APIs works in a cluster. The CA bundle is present; no request has been made.
