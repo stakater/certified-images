@@ -116,6 +116,8 @@ jobs:
           REPOSITORY: ${{ steps.plan.outputs.repository }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
+          # A release tag is never overwritten (ADR-002 rule 3).
+          scripts/assert-tag-free.sh "$REPOSITORY" "$TAG"
           ref=$(scripts/push-image.sh "localhost/stakater/$(basename "$IMAGE_DIR"):build" "$REPOSITORY" "$TAG")
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"

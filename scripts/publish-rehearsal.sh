@@ -49,13 +49,23 @@ tags() {
 }
 
 for expected in 1 2; do
-  release=$(tags | "$ROOT/scripts/next-release.sh" "$VERSION")
+  existing=$(tags)
+  release=$(printf '%s\n' "$existing" | "$ROOT/scripts/next-release.sh" "$VERSION")
   [ "$release" = "$expected" ] || {
-    echo "FAIL - expected release $expected, got $release" >&2
+    echo "FAIL - expected release $expected, got $release. Tags the registry listed: '$(echo "$existing" | tr '\n' ' ')'" >&2
     exit 1
   }
+  REGISTRY_INSECURE=1 SKOPEO_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
+    "$ROOT/scripts/assert-tag-free.sh" "$REG:5000/rehearsal/$NAME" "$VERSION-$release" 2>/dev/null
   digest=$("$ROOT/scripts/push-image.sh" "$REF" "$REPO" "$VERSION-$release" 2>/dev/null)
   "$ENGINE" pull -q "$digest" >/dev/null
   echo "ok   - release $release pushed as $VERSION-$release and pulled back by digest"
 done
+# The tag just pushed must now be refused.
+if REGISTRY_INSECURE=1 SKOPEO_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
+  "$ROOT/scripts/assert-tag-free.sh" "$REG:5000/rehearsal/$NAME" "$VERSION-2" 2>/dev/null; then
+  echo "FAIL - an existing tag was reported as free" >&2
+  exit 1
+fi
+echo "ok   - an existing tag is refused"
 echo "publish-rehearsal: release numbering and push work (signing and submission not rehearsed)"
