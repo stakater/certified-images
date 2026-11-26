@@ -13,7 +13,7 @@ export HADOLINT_IMAGE SHELLCHECK_IMAGE ACTIONLINT_IMAGE RENOVATE_IMAGE YQ_IMAGE 
 
 # What each target checks. Tests override these to point at broken fixtures.
 CONTAINERFILES  ?= $(wildcard images/*/Containerfile)
-SHELL_SCRIPTS   ?= $(wildcard scripts/*.sh tests/*.sh)
+SHELL_SCRIPTS   ?= $(wildcard scripts/*.sh tests/*.sh images/*/functional/*.sh)
 WORKFLOWS       ?= $(wildcard .github/workflows/*.yaml .github/workflows/*.yml)
 RENOVATE_CONFIG ?= renovate.json
 IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))

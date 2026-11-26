@@ -145,6 +145,7 @@ levels need a build, so they run in CI and locally with `make image IMAGE=<name>
 | Unit | Scripts and check logic against fixtures; every check is shown to fail on a broken input | `tests/run.sh` (plain bash) |
 | Image | The built image has the required labels, `/licenses`, non-root user, and starts as an arbitrary UID | `scripts/test-image.sh`, `scripts/preflight-dry-run.sh` |
 | Cluster | The image runs as a pod under restricted pod security (arbitrary UID, read-only root, no capabilities), becomes Ready and serves. On a local kind cluster this approximates OpenShift; it is not OpenShift | `scripts/smoke-test.sh`, `make smoke`, `make test-smoke` |
+| Functional | What the image does, not just that it starts. Optional, per image: `functional/test.sh` runs against the running image and its exit status decides. The same test runs wherever the pipeline has a cluster | `images/<name>/functional/test.sh`, run by `scripts/smoke-test.sh` |
 | End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight → publish rehearsal against a local registry; a separate job proves builds cannot reach the network | `build-certify.yaml`, `make test-hermetic` |
 
 Rules for working with it:
@@ -156,6 +157,9 @@ Rules for working with it:
 - **A new rule starts as a failing case in `tests/run.sh`**, then the rule.
 - A check that cannot run must fail. Never make one skip silently.
 - Scripts must run on bash 3.2 (macOS) and bash 5 (CI).
+- A functional test must be shown to fail once without the thing it tests
+  (run it in a namespace where the image is not running) and the result
+  recorded in the PR. It may use only `kubectl` and its own namespace.
 - Never say an image "works on OpenShift" on the strength of the smoke test.
   Until it runs on a real OpenShift cluster, say "passes the smoke test under
   restricted pod security".
@@ -188,6 +192,7 @@ images/<name>/Containerfile    hermetic build stage + parameterised, digest-pinn
 images/<name>/patches/*.patch  optional dependency-only patches, each listed under deviations
 images/<name>/vex.openvex.json optional CVE exceptions
 images/<name>/smoke/*.yaml     optional fixtures the smoke test deploys first (RBAC, a stub dependency)
+images/<name>/functional/test.sh optional test of what the image does; gets TEST_NAMESPACE, TEST_POD, TEST_IMAGE, TEST_TIMEOUT
 scripts/new-image.sh           scaffolds images/<name>/ from scripts/templates/
 scripts/check-image.sh         our own rules for one image directory
 scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches

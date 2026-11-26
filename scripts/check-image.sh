@@ -186,5 +186,15 @@ case "$visibility" in
   *) err 16 "staging.visibility must be 'public' or 'private' (default private), got '$visibility'" ;;
 esac
 
+# rule 17: a functional/ directory holds an executable test.sh, which the smoke
+# test runs. A directory without one would look tested and not be.
+if [ -d "$DIR/functional" ]; then
+  if [ ! -f "$DIR/functional/test.sh" ]; then
+    err 17 "functional/ exists but has no test.sh"
+  elif [ ! -x "$DIR/functional/test.sh" ]; then
+    err 17 "functional/test.sh is not executable"
+  fi
+fi
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

@@ -38,6 +38,8 @@ test:
 # Smoke test (scripts/smoke-test.sh): run as a pod under restricted pod
 # security and require this endpoint to answer. Reloader v2 serves health on
 # 8080 and metrics on 9090. smoke/ grants the API access it needs to start.
+# functional/test.sh then proves it reloads: a ConfigMap change rolls the
+# workload that uses it, and an unrelated change does not.
 smoke:
   port: 8080
   path: /readyz

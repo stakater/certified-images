@@ -168,13 +168,18 @@ pipeline keeps all of them in one secret:
 
 ```json
 {
-  "6b07595f3ecfc52e21d75e12": "<registry key for OpenCost>",
-  "6af9776fa950dc6dbfa4d693": "<registry key for Reloader>"
+  "6af9776fa950dc6dbfa4d693": { "name": "reloader-operator", "key": "<registry key>" },
+  "6b07595f3ecfc52e21d75e12": { "name": "opencost",          "key": "<registry key>" }
 }
 ```
 
-- The **name** of each entry is the component ID from `image.yaml`.
-- The **value** is that component's registry key, from Partner Connect → the
+- Each entry is filed under the **component ID** from `image.yaml`. That is
+  what the pipeline looks up.
+- **`name`** is the image's name (its directory under `images/`). It is there
+  so a person can read the secret, and the pipeline checks it: if the entry
+  found for a component names a different image, the run stops without logging
+  in. That catches a key pasted under the wrong component.
+- **`key`** is that component's registry key, from Partner Connect → the
   component → "Set up Preflight" / "Push image manually". ⚠️ Page name from
   memory.
 - The **username is not stored**. The pipeline derives it:

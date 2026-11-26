@@ -119,6 +119,9 @@ does not work is caught before it is published.*
   the smoke test and fails if it fails; Reloader has one proving that a
   ConfigMap change rolls the workload and an unrelated change does not; it has
   been shown to fail without Reloader.
+- **State:** done on the local cluster. Run by hand without Reloader on
+  2026-11-26: the control passed and the main assertion failed after its
+  timeout, as it should. Not yet run on OpenShift (P.2b level 2).
 
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my

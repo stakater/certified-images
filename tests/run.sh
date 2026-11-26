@@ -462,6 +462,17 @@ login_rc() { # <expected exit status> <keys> <component>
   login "$2" "$3" >/dev/null 2>&1
   [ "$?" = "$1" ]
 }
+# Entries may carry the image's name, so a person can read the secret. When
+# they do, the name is checked: a key filed under the wrong component is caught.
+NAMED="{\"$CID\":{\"name\":\"image-good\",\"key\":\"key-NAMEDSECRET\"}}"
+named_login() { rh env RH_REGISTRY_KEYS="$1" STUB_CODE=404 STUB_BODY='{}' scripts/rh-registry-login.sh "$CID" "$2"; }
+expect_pass "rh-registry-login: an entry with a name and a key logs in" named_login "$NAMED" image-good
+expect_pass "rh-registry-login: the named entry's key is the one used" bash -c "grep -q 'key-NAMEDSECRET' '$RH/log/docker.stdin'"
+expect_fail "rh-registry-login: an entry named for another image is refused" "image-good.*other-image|other-image.*image-good" named_login "$NAMED" other-image
+expect_pass "rh-registry-login: the name is optional when no image name is given" \
+  rh env RH_REGISTRY_KEYS="$NAMED" STUB_CODE=404 STUB_BODY='{}' scripts/rh-registry-login.sh "$CID"
+expect_fail "rh-registry-login: a named entry without a key is an error" "key" \
+  named_login "{\"$CID\":{\"name\":\"image-good\"}}" image-good
 expect_pass "rh-registry-login: no key for this component exits 3 (skip, not failure)" login_rc 3 "$KEYS" aaaaaaaaaaaaaaaaaaaaaaaa
 expect_pass "rh-registry-login: no secret at all exits 3" login_rc 3 "" "$CID"
 expect_fail "rh-registry-login: it says which secret to add the key to" "RH_REGISTRY_KEYS" login "" "$CID"
@@ -794,6 +805,58 @@ rendered_omits_uid() {
   ! printf '%s\n' "$out" | grep -q 'runAsUser'
 }
 expect_pass "smoke-test: on OpenShift the UID is left for the cluster to assign" rendered_omits_uid
+
+# ---------------------------------------------------------- functional tests
+# A stub kubectl plays a cluster where the pod is admitted, Ready and serving,
+# so what is tested here is only whether the image's own functional test is
+# run, what it is given, and that its failure fails the smoke test.
+FT="$TMP/functional"
+mkdir -p "$FT/bin"
+cat >"$FT/bin/kubectl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *'type=="Ready"'*) printf True ;;
+  *'.status.phase'*) printf Running ;;
+  *restartCount*) printf 0 ;;
+  *'apply -f -'*) cat >/dev/null ;;
+esac
+exit 0
+STUB
+chmod +x "$FT/bin/kubectl"
+# ft_image <case> [test.sh body]: the good fixture, optionally with a functional test
+ft_image() {
+  local dir="$FT/$1/image-good"
+  mkdir -p "$dir"
+  cp "$FIX/image-good/image.yaml" "$dir/"
+  if [ -n "${2:-}" ]; then
+    mkdir -p "$dir/functional"
+    printf '#!/usr/bin/env bash\n%s\n' "$2" >"$dir/functional/test.sh"
+    chmod +x "$dir/functional/test.sh"
+  fi
+  echo "$dir"
+}
+smoke() { PATH="$FT/bin:$PATH" scripts/smoke-test.sh registry.example/img@sha256:abc "$1"; }
+
+expect_pass "functional: an image without a functional test passes the smoke test as before" smoke "$(ft_image none)"
+d=$(ft_image passes 'echo "functional test ran"; exit 0')
+expect_pass "functional: a passing functional test passes the smoke test" smoke "$d"
+expect_pass "functional: and the smoke test says it ran it" bash -c "$(declare -f smoke); FT='$FT'; smoke '$d' 2>&1 | grep -q 'functional test passed'"
+d=$(ft_image fails 'echo "the workload was not rolled" >&2; exit 1')
+expect_fail "functional: a failing functional test fails the smoke test" "functional test failed" smoke "$d"
+expect_pass "functional: and the test's own explanation is shown" bash -c "$(declare -f smoke); FT='$FT'; smoke '$d' 2>&1 | grep -q 'the workload was not rolled'"
+# shellcheck disable=SC2016 # the variables are for the generated test script, not this one
+d=$(ft_image env '[ -n "$TEST_NAMESPACE" ] && [ "$TEST_POD" = smoke ] && [ "$TEST_IMAGE" = registry.example/img@sha256:abc ] && [ -n "$TEST_TIMEOUT" ]')
+expect_pass "functional: the test is given the namespace, pod, image and timeout" smoke "$d"
+d=$(ft_image notexec 'exit 0') && chmod -x "$d/functional/test.sh"
+expect_fail "functional: a test that is not executable fails, it is not skipped" "not executable" smoke "$d"
+
+# rule 17
+dir=$(mutate functional-no-test image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && touch "$dir/functional/notes.txt"
+expect_fail "check-image: functional/ without test.sh fails rule 17" "rule 17:" scripts/check-image.sh "$dir"
+dir=$(mutate functional-not-exec image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && echo '#!/usr/bin/env bash' >"$dir/functional/test.sh"
+expect_fail "check-image: a functional/test.sh that is not executable fails rule 17" "rule 17:" scripts/check-image.sh "$dir"
+dir=$(mutate functional-ok image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && echo '#!/usr/bin/env bash' >"$dir/functional/test.sh" && chmod +x "$dir/functional/test.sh"
+expect_pass "check-image: an executable functional/test.sh passes" scripts/check-image.sh "$dir"
 
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
