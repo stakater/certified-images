@@ -14,6 +14,12 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
+# bash, named explicitly, runs with pipefail. The default shell does not, and
+# then a failure on the left of a pipe is silently ignored.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   verify:
     runs-on: ubuntu-24.04

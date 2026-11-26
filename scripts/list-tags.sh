@@ -13,23 +13,28 @@ set -euo pipefail
 
 REPO=${1:?usage: list-tags.sh <repository>}
 
+# stdout and stderr are kept apart: the engine prints progress on stderr when
+# it first pulls the tool image, and that must never be read as tags.
+errfile=$(mktemp)
+trap 'rm -f "$errfile"' EXIT
 set +e
-out=$(crane ls "$REPO" 2>&1)
+out=$(crane ls "$REPO" 2>"$errfile")
 rc=$?
 set -e
+err=$(cat "$errfile")
 
 if [ "$rc" -ne 0 ]; then
   # Only the registry saying "this repository does not exist" means "no tags".
   # Every other failure (network, auth, a tool image that would not pull) is an
   # error. Treating one as "no tags" would hand out a release number that is
   # already taken.
-  case "$out" in
+  case "$out$err" in
     *"NAME_UNKNOWN"* | *"repository name not known"*)
       echo "list-tags: $REPO does not exist yet, so it has no tags" >&2
       exit 0
       ;;
   esac
-  printf '%s\n' "$out" >&2
+  printf '%s\n%s\n' "$out" "$err" >&2
   echo "list-tags: could not list tags of $REPO" >&2
   exit 1
 fi

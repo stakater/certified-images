@@ -32,6 +32,12 @@ on:
         type: boolean
         default: false
 
+# bash, named explicitly, runs with pipefail. The default shell does not, and
+# then a failure on the left of a pipe is silently ignored.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: ${{ inputs.image-dir }}
@@ -105,9 +111,12 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
           # The staging registry is the single source of release numbers.
+          # Two commands, not a pipe: if the tags cannot be listed the step must
+          # fail, not carry on as if there were none.
           release=0
           if [ "$STAGE" = "true" ]; then
-            release=$(scripts/list-tags.sh "$STAGING" | scripts/next-release.sh "$VERSION")
+            tags=$(scripts/list-tags.sh "$STAGING")
+            release=$(printf '%s\n' "$tags" | scripts/next-release.sh "$VERSION")
           fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "tag=$VERSION-$release" >> "$GITHUB_OUTPUT"

@@ -26,6 +26,12 @@ on:
 permissions:
   contents: read
 
+# bash, named explicitly, runs with pipefail. The default shell does not, and
+# then a failure on the left of a pipe is silently ignored.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   changed:
     name: which images
