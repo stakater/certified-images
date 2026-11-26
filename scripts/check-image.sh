@@ -82,9 +82,8 @@ elif printf '%s' "$prefetch" | jq -e '[.. | objects | select(.type == "generic")
   err 6 "build.prefetch uses the 'generic' fetcher; typed fetchers only (ADR-003 §4)"
 fi
 
-# rule 7: secret suffix is usable in a GitHub secret name
-suffix=$(get .redhat.secretSuffix)
-[[ "$suffix" =~ ^[A-Z0-9_]+$ ]] || err 7 "redhat.secretSuffix must match [A-Z0-9_]+, got '$suffix'"
+# rule 7 is retired: it checked the field that named per-image secrets. No
+# secret is named per image any more (ADR-002 rev 7).
 
 # rule 8: no drift between image.yaml and the Containerfile ARG defaults.
 # Renovate bumps image.yaml only; a stale ARG means wrong labels or toolchain.

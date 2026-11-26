@@ -74,6 +74,13 @@ no_per_image_pyxis_token() {
     .github/workflows scripts images README.md CLAUDE.md docs/setup.md
 }
 expect_pass "secrets: the Pyxis API key is one shared secret, never per image" no_per_image_pyxis_token
+# No secret may be named per image: with many components that is unmanageable
+# (ADR-002 rev 7). Registry credentials are fetched, or held in one secret.
+no_per_image_secrets() {
+  ! grep -rnE 'RH_REGISTRY_(USER|PASSWORD)_|secretSuffix|secrets\[format' \
+    .github/workflows scripts images README.md CLAUDE.md docs/setup.md .claude/skills
+}
+expect_pass "secrets: no secret is named per image" no_per_image_secrets
 
 # ---------------------------------------------------------------- linters
 # Each linter target must reject its broken fixture. A linter that cannot fail
@@ -114,7 +121,6 @@ license-todo|image.yaml|s/license: Apache-2.0/license: TODO/|4
 renovate-comment-missing|image.yaml|/# renovate:/d|5
 prefetch-not-json|image.yaml|s/prefetch: .*/prefetch: 'not json'/|6
 prefetch-generic|image.yaml|s/"type": "gomod"/"type": "generic"/|6
-secret-suffix-lowercase|image.yaml|s/secretSuffix: IMAGE_GOOD/secretSuffix: image-good/|7
 version-drift|Containerfile|s/^ARG UPSTREAM_VERSION=v1.2.3/ARG UPSTREAM_VERSION=v1.2.2/|8
 commit-drift|Containerfile|s/^ARG UPSTREAM_COMMIT=0123/ARG UPSTREAM_COMMIT=ffff/|8
 base-arg-missing|Containerfile|/^ARG BASE_IMAGE=/d|9
@@ -372,6 +378,72 @@ expect_pass "next-release: signature and non-numeric tags are ignored" \
   next_release v1.2.3 2 v1.2.3-1 v1.2.3 latest v1.2.3-rc1 sha256-abc.sig v1.2.3-1.att
 expect_fail "next-release: a version is required" "" bash -c 'echo | scripts/next-release.sh'
 
+# ------------------------------------------------------- Red Hat credentials
+# Stubs: curl answers with STUB_BODY and STUB_CODE and records its arguments;
+# docker records its arguments and what it was given on stdin.
+RH="$TMP/rh"
+mkdir -p "$RH/bin"
+cat >"$RH/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+cat >/dev/null # the request config, with the API key, arrives on stdin
+printf '%s\n' "$*" >>"$RH_LOG/curl.args"
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out=$2; shift ;; esac
+  shift
+done
+[ -n "$out" ] && printf '%s' "$STUB_BODY" >"$out"
+printf '%s' "$STUB_CODE"
+STUB
+cat >"$RH/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$RH_LOG/docker.args"
+cat >"$RH_LOG/docker.stdin"
+exit "${STUB_DOCKER_RC:-0}"
+STUB
+chmod +x "$RH/bin/curl" "$RH/bin/docker"
+CID=0123456789abcdef01234567
+rh() { # runs a script with the stubs first on PATH and a fresh log dir
+  rm -rf "$RH/log" && mkdir -p "$RH/log"
+  RH_LOG="$RH/log" ENGINE=docker PATH="$RH/bin:$PATH" "$@"
+}
+
+# pyxis-probe.sh: shows what the API returns, never the values.
+probe_out() { rh env RH_PYXIS_TOKEN=tok-PROBESECRET STUB_CODE="$1" STUB_BODY="$2" scripts/pyxis-probe.sh "$CID" 2>&1; }
+BODY='{"registry_credentials":{"username":"robot-user","password":"hunter2-SECRETVALUE"},"_id":"x"}'
+expect_pass "pyxis-probe: reports the HTTP status" bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$BODY' | grep -q 'HTTP 200'"
+expect_pass "pyxis-probe: lists the field names it got back" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$BODY' | grep -q 'registry_credentials.password'"
+expect_pass "pyxis-probe: never prints a value from the response" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$BODY' | grep -qE 'SECRETVALUE|robot-user'"
+expect_pass "pyxis-probe: never prints the API key" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$BODY' | grep -q PROBESECRET"
+expect_pass "pyxis-probe: the API key is not passed on curl's command line" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$BODY' >/dev/null; ! grep -q PROBESECRET '$RH/log/curl.args'"
+expect_fail "pyxis-probe: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/pyxis-probe.sh "$CID"
+expect_fail "pyxis-probe: refuses a malformed component ID" "component" rh env RH_PYXIS_TOKEN=t scripts/pyxis-probe.sh not-an-id
+
+# rh-registry-login.sh: one shared secret holds every component's registry key.
+KEYS="{\"$CID\":\"key-LOGINSECRET\",\"ffffffffffffffffffffffff\":\"other\"}"
+login() { rh env RH_REGISTRY_KEYS="$1" STUB_CODE=404 STUB_BODY='{}' scripts/rh-registry-login.sh "$2"; }
+expect_pass "rh-registry-login: logs in with the key held for this component" login "$KEYS" "$CID"
+expect_pass "rh-registry-login: the username is derived from the component ID" \
+  bash -c "grep -q -- '-u redhat-isv-containers+$CID-robot' '$RH/log/docker.args' && grep -q 'quay.io' '$RH/log/docker.args'"
+expect_pass "rh-registry-login: the key goes to the engine on stdin, not the command line" \
+  bash -c "grep -q 'key-LOGINSECRET' '$RH/log/docker.stdin' && ! grep -q LOGINSECRET '$RH/log/docker.args'"
+login_quiet() { ! login "$KEYS" "$CID" 2>&1 | grep -q LOGINSECRET; }
+expect_pass "rh-registry-login: never prints the key" login_quiet
+login_rc() { # <expected exit status> <keys> <component>
+  login "$2" "$3" >/dev/null 2>&1
+  [ "$?" = "$1" ]
+}
+expect_pass "rh-registry-login: no key for this component exits 3 (skip, not failure)" login_rc 3 "$KEYS" aaaaaaaaaaaaaaaaaaaaaaaa
+expect_pass "rh-registry-login: no secret at all exits 3" login_rc 3 "" "$CID"
+expect_fail "rh-registry-login: it says which secret to add the key to" "RH_REGISTRY_KEYS" login "" "$CID"
+expect_pass "rh-registry-login: a secret that is not JSON is an error, not a skip" login_rc 1 "not json" "$CID"
+expect_pass "rh-registry-login: a failed login is an error, not a skip" \
+  bash -c "$(declare -f rh login); RH='$RH'; STUB_DOCKER_RC=1 login '$KEYS' $CID >/dev/null 2>&1; [ \$? = 1 ]"
+
 # ------------------------------------------------------------ list-tags.sh
 # A stub engine stands in for crane. STUB_OUT is what it prints, STUB_RC its
 # exit status. Getting this wrong reuses a release number, so only an explicit
@@ -484,7 +556,8 @@ expect_pass "publish-plan: a real component ID is publishable" plan_has "$d" "pu
 expect_pass "publish-plan: repository is Red Hat's partner registry path" \
   plan_has "$d" "repository=quay.io/redhat-isv-containers/0123456789abcdef01234567"
 expect_pass "publish-plan: version comes from image.yaml" plan_has "$d" "version=v1.2.3"
-expect_pass "publish-plan: suffix comes from image.yaml" plan_has "$d" "suffix=IMAGE_GOOD"
+expect_pass "publish-plan: the registry username is derived from the component ID" \
+  plan_has "$d" "registry_username=redhat-isv-containers+0123456789abcdef01234567-robot"
 d=$(plan_image malformed not-an-id)
 expect_fail "publish-plan: a malformed component ID fails" "componentId" scripts/publish-plan.sh "$d"
 

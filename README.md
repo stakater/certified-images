@@ -37,7 +37,7 @@ Images:
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
 | `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
-| `reloader` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader`, public by declaration | Component `6af9776fa950dc6dbfa4d693` set; not published: registry secrets pending |
+| `reloader` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader`, public by declaration | Component `6af9776fa950dc6dbfa4d693` set; not published: secrets pending |
 
 ### Two registries
 
@@ -242,6 +242,7 @@ tests/                          # tests for the scripts and the checks
 .github/workflows/images.yaml         # calls it for every image on pull requests (read-only)
 .github/workflows/publish.yaml        # calls it with publish=true on merges to main: stage to GHCR, then Red Hat when ready
 .github/workflows/verify.yaml         # make verify on pull requests
+.github/workflows/pyxis-probe.yaml    # manual: what Red Hat's API returns for a component, names only
 renovate.json                   # upstream tag+commit, UBI digest, toolchain digest, tool images
 docs/                           # vision, method, roadmap, planning docs, ADRs, references
 ```
@@ -277,15 +278,16 @@ On a merge to `main` that touches an image (`publish.yaml`), the same job contin
 To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
 
 ### Setup and secrets
-Staging to GHCR needs no secrets. The Red Hat stage needs one shared repository secret, plus two per image named from `redhat.secretSuffix` in `image.yaml`:
+Staging to GHCR needs no secrets. The Red Hat stage needs **two repository secrets in total**, however many images there are. No secret is named per image:
 
-| Secret | How many | What |
-|---|---|---|
-| `RH_PYXIS_TOKEN` | One, for every image | Partner Connect API key for submitting certification results. The component is chosen by its ID, not by the key |
-| `RH_REGISTRY_USER_<SUFFIX>` | One per image | The component's registry robot account. Red Hat gives each component its own repository and login |
-| `RH_REGISTRY_PASSWORD_<SUFFIX>` | One per image | That account's registry key |
+| Secret | What |
+|---|---|
+| `RH_PYXIS_TOKEN` | Partner Connect API key for submitting certification results. One key covers every component |
+| `RH_REGISTRY_KEYS` | One JSON object holding each component's registry key, keyed by component ID. The username is derived from the component ID |
 
-**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add the shared API key once; then per image, create the component, add its two registry secrets, and merge the PR that sets the component ID. That merge is the publish.
+`RH_REGISTRY_KEYS` may turn out to be unnecessary: if Red Hat's API returns registry credentials given the API key, the pipeline can fetch them. The `pyxis-probe` workflow answers that once `RH_PYXIS_TOKEN` exists.
+
+**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add the two secrets once; then per image, create the component, add its registry key as one entry in `RH_REGISTRY_KEYS`, and merge the PR that sets the component ID. That merge is the publish.
 
 ## Run it locally
 You need docker or podman, `make`, `git` and `jq`. Every other tool runs from a container image pinned by digest.

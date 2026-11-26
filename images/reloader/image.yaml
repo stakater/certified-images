@@ -43,8 +43,6 @@ redhat:
   # Partner Connect container component "Reloader (operator) container"
   componentId: "6af9776fa950dc6dbfa4d693"
   # Push target: quay.io/redhat-isv-containers/6af9776fa950dc6dbfa4d693
-  # Per-image registry secrets: RH_REGISTRY_USER_RELOADER, RH_REGISTRY_PASSWORD_RELOADER
-  secretSuffix: RELOADER
 
 # Staging visibility on GHCR (ADR-002 rev 6). Public on purpose, decided by the
 # owner on 2026-11-26: Reloader is open source (Apache-2.0) and its own images
