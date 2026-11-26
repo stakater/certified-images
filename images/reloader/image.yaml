@@ -46,6 +46,12 @@ redhat:
   # Per-image registry secrets: RH_REGISTRY_USER_RELOADER, RH_REGISTRY_PASSWORD_RELOADER
   secretSuffix: RELOADER
 
-# Staged to ghcr.io/stakater/ubi/reloader, private by default (ADR-002 rev 6).
+# Staging visibility on GHCR (ADR-002 rev 6). Public on purpose, decided by the
+# owner on 2026-11-26: Reloader is open source (Apache-2.0) and its own images
+# are already public. Console and Gateway are separate images with their own
+# decision.
+staging:
+  visibility: public
+
 consumers:
   - reloader   # the product itself: deployed by its Helm chart, by digest
