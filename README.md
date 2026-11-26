@@ -36,7 +36,8 @@ Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged as `v1.121.5-1`; later releases follow each merge | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+| `reloader` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | See its PR | `ghcr.io/stakater/ubi/reloader`, private by default, not staged yet | Not published: no component yet |
 
 ### Two registries
 

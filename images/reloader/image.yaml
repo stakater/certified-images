@@ -1,0 +1,48 @@
+# One file per artifact (schema modelled on Iron Bank's hardening_manifest.yaml).
+#
+# Reloader is Stakater's own code. ADR-006 says its build belongs in its own
+# repository; it starts here by the owner's decision (2026-11-26) and moves
+# there once the pipeline can be called from another repository.
+kind: container
+name: reloader
+displayName: Stakater build of Reloader
+summary: "Reloader: rolling upgrades when ConfigMaps or Secrets change, on Red Hat UBI"
+description: >-
+  Stakater Reloader watches ConfigMaps and Secrets and performs rolling upgrades on the workloads that use them. Built by Stakater from source on Red Hat Universal Base Image.
+
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [reloader, configmap, secret, rolling-upgrade, kubernetes]
+
+upstream:
+  repo: https://github.com/stakater/Reloader
+  # Reloader v2 only. v1 is a different design and is not built here. v2 has
+  # no final release yet, so this pins a beta.
+  # renovate: datasource=github-tags depName=stakater/Reloader
+  version: v2.0.0-beta.3
+  commit: 5f3fdbdc7c5021e1fd9ba9fe134f5ac6ee29d4ac   # tag must dereference to this (ADR-003)
+  license: Apache-2.0
+
+build:
+  # Hermeto prefetch input (ADR-003). Typed fetchers only.
+  prefetch: '{"type": "gomod", "path": "."}'
+
+test:
+  # Start-up test: the image must exit 0 when run with these arguments.
+  command: ["--help"]
+
+# Smoke test (scripts/smoke-test.sh): run as a pod under restricted pod
+# security and require this endpoint to answer. Reloader v2 serves health on
+# 8080 and metrics on 9090. smoke/ grants the API access it needs to start.
+smoke:
+  port: 8080
+  path: /readyz
+
+redhat:
+  # Partner Connect container component (fill after creating the component)
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+  # Per-image registry secrets: RH_REGISTRY_USER_RELOADER, RH_REGISTRY_PASSWORD_RELOADER
+  secretSuffix: RELOADER
+
+# Staged to ghcr.io/stakater/ubi/reloader, private by default (ADR-002 rev 6).
+consumers:
+  - reloader   # the product itself: deployed by its Helm chart, by digest

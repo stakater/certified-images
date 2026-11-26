@@ -1,0 +1,65 @@
+# Smoke-test fixture (scripts/smoke-test.sh), not a deployment manifest.
+#
+# Reloader watches ConfigMaps and Secrets and patches the workloads that use
+# them, so it cannot start without API access. This grants the test pod's
+# service account what Reloader's own chart grants. __NAMESPACE__ is replaced
+# with the throwaway test namespace, and everything here is deleted afterwards.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: smoke-reloader-__NAMESPACE__
+rules:
+  - apiGroups: [""]
+    resources: [secrets, configmaps]
+    verbs: [list, get, watch]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [list, get, watch]
+  - apiGroups: [apps]
+    resources: [deployments, daemonsets, statefulsets]
+    verbs: [list, get, watch, update, patch]
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [list, get, watch]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, delete, list, get, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: smoke-reloader-__NAMESPACE__
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: smoke-reloader-__NAMESPACE__
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: __NAMESPACE__
+---
+# Reloader keeps a metadata ConfigMap in its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: smoke-reloader-metadata
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [list, get, watch, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: smoke-reloader-metadata
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: smoke-reloader-metadata
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: __NAMESPACE__
