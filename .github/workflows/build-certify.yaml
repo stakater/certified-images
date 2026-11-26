@@ -64,10 +64,7 @@ jobs:
           WANT_PUBLISH: ${{ inputs.publish }}
           PUBLISHABLE: ${{ steps.plan.outputs.publishable }}
           REASON: ${{ steps.plan.outputs.reason }}
-          SUFFIX: ${{ steps.plan.outputs.suffix }}
-          # Used only to see which secrets exist. Values are never printed.
-          RH_USER: ${{ secrets[format('RH_REGISTRY_USER_{0}', steps.plan.outputs.suffix)] }}
-          RH_PASSWORD: ${{ secrets[format('RH_REGISTRY_PASSWORD_{0}', steps.plan.outputs.suffix)] }}
+          # Used only to see whether the secret exists. The value is never printed.
           RH_PYXIS: ${{ secrets.RH_PYXIS_TOKEN }}
         run: |
           stage=false
@@ -78,11 +75,9 @@ jobs:
             if [ "$PUBLISHABLE" != "true" ]; then
               why="$REASON"
             else
-              missing=""
-              [ -n "$RH_USER" ] || missing="$missing RH_REGISTRY_USER_$SUFFIX"
-              [ -n "$RH_PASSWORD" ] || missing="$missing RH_REGISTRY_PASSWORD_$SUFFIX"
-              [ -n "$RH_PYXIS" ] || missing="$missing RH_PYXIS_TOKEN"
-              if [ -z "$missing" ]; then redhat=true; else why="missing repository secrets:$missing (docs/setup.md, step 6)"; fi
+              # The registry key is resolved later, at login. Here: is the
+              # shared API key there at all?
+              if [ -n "$RH_PYXIS" ]; then redhat=true; else why="the repository secret RH_PYXIS_TOKEN is missing (docs/setup.md, step 6)"; fi
             fi
           fi
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
@@ -216,17 +211,34 @@ jobs:
       # ---------------------------------------------- stage 2: Red Hat
       # Outward-facing: publishes to Red Hat and submits for certification.
 
+      # No secret is named per image (ADR-002 rev 7). The username comes from the
+      # component ID; the key comes from the one shared RH_REGISTRY_KEYS secret.
+      # If there is no key for this component yet, the stage is skipped, loudly.
       - name: Log in to Red Hat's partner registry
+        id: rhlogin
         if: ${{ steps.mode.outputs.redhat == 'true' }}
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: quay.io
-          username: ${{ secrets[format('RH_REGISTRY_USER_{0}', steps.plan.outputs.suffix)] }}
-          password: ${{ secrets[format('RH_REGISTRY_PASSWORD_{0}', steps.plan.outputs.suffix)] }}
+        env:
+          RH_REGISTRY_KEYS: ${{ secrets.RH_REGISTRY_KEYS }}
+          COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
+        run: |
+          rc=0
+          scripts/rh-registry-login.sh "$COMPONENT_ID" || rc=$?
+          if [ "$rc" = "0" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" = "3" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Not published to Red Hat::$IMAGE_DIR is staged to GHCR only: no registry key for component $COMPONENT_ID in RH_REGISTRY_KEYS (docs/setup.md, step 6)"
+            {
+              echo "### $IMAGE_DIR: staged to GHCR, **not published to Red Hat**"
+              echo "No registry key for component \`$COMPONENT_ID\` in the \`RH_REGISTRY_KEYS\` secret."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            exit "$rc"
+          fi
 
       - name: Promote the staged digest to Red Hat
         id: redhat
-        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        if: ${{ steps.rhlogin.outputs.ready == 'true' }}
         env:
           STAGED: ${{ steps.stage.outputs.ref }}
           REPOSITORY: ${{ steps.plan.outputs.repository }}
@@ -239,7 +251,7 @@ jobs:
           echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"
 
       - name: Sign and attest the Red Hat image
-        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        if: ${{ steps.rhlogin.outputs.ready == 'true' }}
         env:
           REF: ${{ steps.redhat.outputs.ref }}
         run: |
@@ -249,7 +261,7 @@ jobs:
           cosign attest --yes --type spdxjson --predicate "$evidence/sbom.deps.spdx.json" "$REF"
 
       - name: Attest build provenance (Red Hat image)
-        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        if: ${{ steps.rhlogin.outputs.ready == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ steps.plan.outputs.repository }}
@@ -257,7 +269,7 @@ jobs:
           push-to-registry: true
 
       - name: Submit to Red Hat for certification
-        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        if: ${{ steps.rhlogin.outputs.ready == 'true' }}
         env:
           # One Partner Connect API key for every component (ADR-002 rule 5).
           PFLT_PYXIS_API_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
@@ -267,7 +279,7 @@ jobs:
         run: scripts/preflight-submit.sh "$REPOSITORY:$TAG" "$COMPONENT_ID"
 
       - name: Summary (Red Hat)
-        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        if: ${{ steps.rhlogin.outputs.ready == 'true' }}
         env:
           REF: ${{ steps.redhat.outputs.ref }}
           TAG: ${{ steps.release.outputs.tag }}

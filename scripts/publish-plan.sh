@@ -7,7 +7,7 @@
 #   reason       why not, when false
 #   staging_repository   where every build is staged (always printed)
 #   staging_visibility   public | private (default private)
-#   component_id, suffix, version, repository   (repository: Red Hat's, when publishable)
+#   component_id, version, repository, registry_username   (Red Hat's, when publishable)
 #
 # An image whose redhat.componentId is still the placeholder is not publishable.
 # That is a normal state while Partner Connect is pending, so it is reported,
@@ -31,10 +31,8 @@ JSON=$("$ENGINE" run --rm -i "$YQ_IMAGE" -o=json '.' <"$DIR/image.yaml") || {
 get() { printf '%s' "$JSON" | jq -r "$1 // \"\""; }
 
 id=$(get .redhat.componentId)
-suffix=$(get .redhat.secretSuffix)
 version=$(get .upstream.version)
 
-echo "suffix=$suffix"
 echo "version=$version"
 echo "staging_repository=$STAGING/$(get .name)"
 # Private unless image.yaml declares otherwise (ADR-002 rev 6).
@@ -53,5 +51,6 @@ case "$id" in
     echo "publishable=true"
     echo "component_id=$id"
     echo "repository=$REGISTRY/$id"
+    echo "registry_username=redhat-isv-containers+$id-robot"
     ;;
 esac

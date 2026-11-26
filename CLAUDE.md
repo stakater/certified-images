@@ -123,9 +123,10 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
   open-source software. Never add it without being asked, and never for an
   image of Stakater's own code (ADR-002 rev 6). Never merge, push to `main`, or trigger a
   publish without explicit authorization. Work on a feature branch and open a PR.
-- **Secrets by reference only.** Partner Connect and registry credentials are
-  GitHub secrets named from `image.yaml` (`redhat.secretSuffix`). Never read,
-  echo or inline their values.
+- **Secrets by reference only.** There are two Red Hat secrets for the whole
+  repository: `RH_PYXIS_TOKEN` and `RH_REGISTRY_KEYS`. No secret is named per
+  image (ADR-002 rev 7); never add one. Never read, echo or inline a secret's
+  value, and never print an API response without redacting it.
 - **Human steps stay human.** Creating a Partner Connect component, submitting
   an export questionnaire, adding repository secrets, and opening a PR on an
   upstream project are done by a person. Say what is needed; do not attempt them.
@@ -205,6 +206,8 @@ scripts/push-image.sh          pushes and prints the digest reference; assert-ta
 scripts/copy-image.sh          promotes a digest from staging to Red Hat's registry, unchanged
 scripts/assert-visibility.sh   fails if a staging package is more open than its image declares
 scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
+scripts/rh-registry-login.sh   logs in to Red Hat's registry for a component: derived username, key from the shared secret
+scripts/pyxis-probe.sh         what Red Hat's API returns for a component, field names only
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched
 scripts/lib.sh, tools.env      shared: container engine, and every tool image pinned by digest

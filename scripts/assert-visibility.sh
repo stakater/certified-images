@@ -53,8 +53,9 @@ if [ "$actual" = "absent" ]; then
 elif [ "$actual" = "$DECLARED" ]; then
   echo "assert-visibility: $REPO is $actual, as declared" >&2
 elif [ "$DECLARED" = "public" ]; then
-  echo "::warning title=Staging package is private::$REPO is declared public in image.yaml but refuses anonymous access." >&2
-  echo "assert-visibility: $REPO is declared public but is private. That is safe; change the package's visibility if public was intended." >&2
+  # The registry also refuses anonymous access to a package that does not
+  # exist yet, so before a first push this is expected.
+  echo "assert-visibility: $REPO is declared public but refuses anonymous access: it is private, or it does not exist yet. That is safe; if it still does after a push, change the package's visibility." >&2
 else
   cat >&2 <<MSG
 assert-visibility: $REPO is PUBLIC, but its image.yaml does not declare it public.

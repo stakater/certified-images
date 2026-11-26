@@ -1,0 +1,49 @@
+# Manual, read-only: asks Red Hat's Partner Connect API what it returns for one
+# image's component, and prints field NAMES only, never values
+# (scripts/pyxis-probe.sh).
+#
+# Why: to find out whether the API hands out a component's registry
+# credentials given the shared API key. If it does, RH_REGISTRY_KEYS is not
+# needed and the repository holds one Red Hat secret in total (ADR-002 rev 7).
+name: pyxis-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image name (the directory under images/), e.g. reloader
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# bash, named explicitly, runs with pipefail. The default shell does not, and
+# then a failure on the left of a pipe is silently ignored.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Probe
+        env:
+          RH_PYXIS_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          if ! [[ "$IMAGE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || [ ! -f "images/$IMAGE/image.yaml" ]; then
+            echo "::error::No such image: $IMAGE"
+            exit 1
+          fi
+          id=$(scripts/publish-plan.sh "images/$IMAGE" | sed -n 's/^component_id=//p')
+          if [ -z "$id" ]; then
+            echo "::error::images/$IMAGE has no Partner Connect component ID"
+            exit 1
+          fi
+          scripts/pyxis-probe.sh "$id" | tee -a "$GITHUB_STEP_SUMMARY"

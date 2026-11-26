@@ -26,14 +26,14 @@ an issue or a chat.
 | 4 | Create the component, get its ID | Partner Connect user | Red Hat Partner Connect | image |
 | 5 | Submit the export questionnaire | Partner Connect user | Red Hat Partner Connect | image (can be batched) |
 | 6a | Add the shared API key `RH_PYXIS_TOKEN` | Repo admin | GitHub | repo |
-| 6b | Add the image's two registry secrets | Repo admin | GitHub | image |
+| 6b | Add the component's registry key to the shared `RH_REGISTRY_KEYS` secret | Repo admin | GitHub | image (one entry) |
 | 7 | Set the component ID in `image.yaml`, merge | Factory team | GitHub | image |
 | 8 | Check the publish run and Partner Connect | Factory team | GitHub, Partner Connect | publish |
 | 9 | Verify from outside CI, record the result | Factory team | Your own machine | first publish |
 
-Steps 6 and 7 can be done in either order. If the component ID is set but a
-secret is missing, the run stages the image to GHCR, skips the Red Hat stage
-and names the missing secret. The first run with both in place publishes to
+Steps 6 and 7 can be done in either order. If the component ID is set but
+`RH_PYXIS_TOKEN` or the component's registry key is missing, the run stages
+the image to GHCR, skips the Red Hat stage and says what is missing. The first run with both in place publishes to
 Red Hat.
 
 ## 1. Merge the pipeline
@@ -137,49 +137,71 @@ complete without it.
 
 ## 6. Add the secrets
 
-There are two kinds, and they are managed differently.
+**Two secrets for the whole repository, however many images there are.** No
+secret is named per image (ADR-002 rev 7).
 
-### 6a. The Partner Connect API key — once, for every image
-
-| Secret name | What it is | Where to get it ⚠️ |
+| Secret | How many | What it is |
 |---|---|---|
-| `RH_PYXIS_TOKEN` | Partner Connect (Pyxis) API key. `preflight --submit` uses it to post certification results | Partner Connect → account → API keys → generate |
+| `RH_PYXIS_TOKEN` | one | Partner Connect (Pyxis) API key. Submits certification results |
+| `RH_REGISTRY_KEYS` | one | The registry keys of every component, as one JSON object |
+
+### 6a. `RH_PYXIS_TOKEN` — once
+
+Partner Connect → account → API keys → generate. ⚠️ Page name from memory.
 
 One key covers every component: the key belongs to a Partner Connect account,
-and the component is chosen by the ID the pipeline passes to preflight. Adding
-an image never needs a new key.
+and the component is chosen by the ID the pipeline passes to preflight.
 
 **Create it from a dedicated Stakater certification account, not a personal
 one.** The key is tied to the user who creates it. If that person's account
 changes, or the key is revoked, every publish fails at "Submit to Red Hat".
 
-**Rotation.** When the key is revoked or expires: generate a new one from the
-same account, run `gh secret set RH_PYXIS_TOKEN` again, and re-run the failed
-publish. Nothing in the repository changes. Record who holds the account and
-when the key was last rotated wherever the team keeps its runbooks.
+**Rotation.** Generate a new key from the same account, run
+`gh secret set RH_PYXIS_TOKEN` again, re-run the failed publish. Nothing in the
+repository changes. Record who holds the account and when the key was last
+rotated wherever the team keeps its runbooks.
 
-### 6b. Registry credentials — two per image
+### 6b. `RH_REGISTRY_KEYS` — one secret, one entry per component
 
-Red Hat gives each component its own repository
-(`quay.io/redhat-isv-containers/<componentId>`) with its own login, so these
-cannot be shared. Their names end in the image's `redhat.secretSuffix` from
-`image.yaml`. For `opencost` the suffix is `OPENCOST`.
+Red Hat gives each component its own repository and its own registry key. The
+pipeline keeps all of them in one secret:
 
-| Secret name | What it is | Where to get it ⚠️ |
-|---|---|---|
-| `RH_REGISTRY_USER_OPENCOST` | Registry username for this component. It looks like `redhat-isv-containers+<componentId>-robot` | Partner Connect → the component → "Set up Preflight" / "Push image manually" |
-| `RH_REGISTRY_PASSWORD_OPENCOST` | The registry key shown next to that username | Same page |
+```json
+{
+  "6b07595f3ecfc52e21d75e12": "<registry key for OpenCost>",
+  "6af9776fa950dc6dbfa4d693": "<registry key for Reloader>"
+}
+```
 
-⚠️ The page names are from memory of Partner Connect's layout and may have
-moved. The values are what matters.
+- The **name** of each entry is the component ID from `image.yaml`.
+- The **value** is that component's registry key, from Partner Connect → the
+  component → "Set up Preflight" / "Push image manually". ⚠️ Page name from
+  memory.
+- The **username is not stored**. The pipeline derives it:
+  `redhat-isv-containers+<componentId>-robot`. ⚠️ That is the format in Red
+  Hat's push instructions as remembered; the first real login confirms it.
 
-**At many images this is the part that grows.** Two secrets per image is
-workable but tedious. Red Hat's API may be able to return a component's
-registry credentials given the API key, which would leave `RH_PYXIS_TOKEN` as
-the only secret. ⚠️ That is unconfirmed: the endpoint could not be found in Red
-Hat's public API docs or in their own pipeline code (checked 2026-11-26). It is
-a backlog spike to try against the first real component, not something the
-pipeline relies on.
+To add an image later: add one entry and set the secret again. GitHub cannot
+show you a secret's current value, so **keep the full JSON in the team's
+password manager** and paste the whole object each time.
+
+An image whose component has no entry is not an error: the run stages it to
+GHCR, skips the Red Hat stage, and names the missing component ID.
+
+### 6c. Can `RH_REGISTRY_KEYS` go away?
+
+Possibly. If Red Hat's API returns a component's registry credentials given
+`RH_PYXIS_TOKEN`, the pipeline can fetch each key itself and the repository
+needs one secret in total. That is not confirmed, but it looks likely: the
+API has a `/secrets` endpoint per component (it answers "authentication
+required" to an invalid key, where a made-up path answers "not found"). What
+it returns is unknown. To find out, once `RH_PYXIS_TOKEN` exists:
+
+GitHub → Actions → `pyxis-probe` → Run workflow → image `reloader`.
+
+It prints the HTTP status and the **names** of the fields the API returns,
+never a value. If credentials are there, the fetch gets implemented and this
+secret is retired.
 
 ### Where they go
 
@@ -191,9 +213,8 @@ Or from a terminal. Each command prompts for the value, so it never appears in
 your shell history:
 
 ```
-gh secret set RH_PYXIS_TOKEN                --repo stakater/certified-images   # once
-gh secret set RH_REGISTRY_USER_OPENCOST     --repo stakater/certified-images   # per image
-gh secret set RH_REGISTRY_PASSWORD_OPENCOST --repo stakater/certified-images   # per image
+gh secret set RH_PYXIS_TOKEN   --repo stakater/certified-images
+gh secret set RH_REGISTRY_KEYS --repo stakater/certified-images
 ```
 
 Check they exist (this lists names only):
@@ -222,7 +243,7 @@ In GitHub → Actions → `publish`, the run's summary shows the tag
 
 | It fails at | Likely cause |
 |---|---|
-| "Log in to Red Hat's partner registry" | A registry secret is wrong. (A missing one skips the stage with a warning instead) |
+| "Log in to Red Hat's partner registry" | The key held for this component in `RH_REGISTRY_KEYS` is wrong, the secret is not valid JSON, or the derived username format is wrong. (A missing entry skips the stage with a warning instead) |
 | "Promote the staged digest to Red Hat" | The robot account cannot push, the tag already exists there, or the digest changed in transit |
 | "Release number" | GHCR refused to list the staging repository's tags |
 | "Sign the digest and attest the SBOMs" | The job lacks `id-token: write`, or Sigstore was unreachable |
@@ -251,5 +272,5 @@ After that, the consuming product pins the digest in its CSV `relatedImages`
 
 ## For the next image
 
-Steps 4, 5, 6b and 7 to 9 again, with that image's suffix. The API key is already there. Steps 4 and 5 can start as soon
+Steps 4, 5, 6b and 7 to 9 again: one new entry in `RH_REGISTRY_KEYS`. The API key is already there. Steps 4 and 5 can start as soon
 as the image is admitted; they do not depend on its PR.

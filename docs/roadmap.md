@@ -123,7 +123,7 @@ mirror, so that showback works without internet access.*
 
 - Scheduled daily re-scan of published digests (ADR-002 rule 4) and the first outer audit (method.md).
 - Offer OpenCost's dependency bump upstream and record the PR link in `image.yaml` (ADR-002 rule 2).
-- Spike: fetch a component's registry credentials with the API key, so the repo needs one secret in total (ADR-002 rule 5; unconfirmed endpoint).
+- Run `pyxis-probe` once `RH_PYXIS_TOKEN` exists. If Red Hat's API returns registry credentials, implement the fetch in `rh-registry-login.sh` and retire `RH_REGISTRY_KEYS` (ADR-002 rev 7).
 - Make the pipeline callable from another repository (ADR-006), then move Reloader's build to the Reloader repository.
 - A functional-test contract: an image may ship a test the pipeline runs against the cluster once the image is up (for Reloader: change a ConfigMap, assert the workload rolled). The same test runs on the local cluster and on OpenShift.
 - Split the pipeline into build-and-stage, test-on-OpenShift, promote-to-Red-Hat, once the OpenShift runner exists (P.2b level 2).

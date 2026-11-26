@@ -15,7 +15,6 @@ COMMIT=$(git ls-remote "https://github.com/${REPO}" "refs/tags/${VERSION}^{}" | 
 [ -n "$COMMIT" ] || { echo "tag ${VERSION} not found in ${REPO}"; exit 1; }
 
 mkdir -p "$DIR"
-SUFFIX=$(echo "$NAME" | tr '[:lower:]-' '[:upper:]_')
 
 cat > "$DIR/image.yaml" <<EOF
 kind: container
@@ -40,7 +39,6 @@ smoke:
   path: /healthz # TODO a path that answers 2xx when the image is healthy
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
-  secretSuffix: ${SUFFIX}
 # Staged to ghcr.io/stakater/ubi/${NAME}, private by default. To make it public,
 # add 'staging: {visibility: public}' in a reviewed PR (ADR-002 rev 6).
 consumers: []

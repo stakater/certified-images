@@ -23,5 +23,4 @@ smoke:
   args: ["serve", "--quiet"]
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
-  secretSuffix: IMAGE_GOOD
 consumers: []
