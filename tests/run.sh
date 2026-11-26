@@ -413,6 +413,42 @@ a tool image that could not be pulled|docker: Error response from daemon: manife
 a timeout|level=fatal msg="fetching tags list: context deadline exceeded"
 an empty error|
 CASES
+# The engine prints progress on stderr the first time it pulls the tool image.
+# That must not be mistaken for tags, nor make a good answer look bad.
+NOISY_ENGINE="$TMP/noisy-engine"
+cat >"$NOISY_ENGINE" <<'STUB'
+#!/usr/bin/env bash
+echo "Unable to find image 'gcr.io/go-containerregistry/crane:v0' locally" >&2
+echo "v0: Pulling from go-containerregistry/crane" >&2
+printf 'v1.2.3-1\nv1.2.3-2\n'
+STUB
+chmod +x "$NOISY_ENGINE"
+noisy_tags() {
+  local got
+  got=$(ENGINE="$NOISY_ENGINE" REGISTRY_AUTH_FILE=/nonexistent scripts/list-tags.sh registry.example/repo 2>/dev/null | tr '\n' ' ') || return 1
+  [ "$got" = "v1.2.3-1 v1.2.3-2 " ] || {
+    echo "got '$got'"
+    return 1
+  }
+}
+expect_pass "list-tags: the engine's pull messages on stderr are not treated as output" noisy_tags
+# A pipe hides the left side's failure unless the shell has pipefail, and
+# GitHub's default shell does not. A failed listing then reads as "no tags".
+no_piped_listing() {
+  ! grep -nE 'list-tags\.sh[^|#]*\|' .github/workflows/*.yaml
+}
+expect_pass "workflows: list-tags.sh is never piped, so its failure cannot be swallowed" no_piped_listing
+every_workflow_job_uses_pipefail() {
+  local f
+  for f in .github/workflows/*.yaml; do
+    grep -q 'run:' "$f" || continue
+    grep -qE '^ +shell: bash$' "$f" || {
+      echo "$f has run steps but no 'defaults: run: shell: bash' (which enables pipefail)"
+      return 1
+    }
+  done
+}
+expect_pass "workflows: every workflow with run steps sets shell: bash (pipefail)" every_workflow_job_uses_pipefail
 expect_fail "list-tags: success with output that is not a list of tags is an error" "could not list tags" \
   list_tags 0 'Error: something went wrong'
 
