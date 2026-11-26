@@ -458,6 +458,35 @@ staging_not_called_certified() {
 }
 expect_pass "publish-plan: the staging path does not say 'certified'" staging_not_called_certified
 
+# ------------------------------------------------------ assert-not-public.sh
+# Staging packages must not be anonymously pullable (ADR-002 rev 5). A stub
+# curl stands in for the registry: STUB_TOKEN_BODY is the token endpoint's
+# answer, STUB_CODE the HTTP status of the anonymous tags request.
+STUB_BIN="$TMP/stub-bin"
+mkdir -p "$STUB_BIN"
+cat >"$STUB_BIN/curl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *"/token?"*) printf '%s' "$STUB_TOKEN_BODY" ;;
+  *) printf '%s' "$STUB_CODE" ;;
+esac
+exit "${STUB_CURL_RC:-0}"
+STUB
+chmod +x "$STUB_BIN/curl"
+not_public() { # <token body> <http code> [curl rc]
+  STUB_TOKEN_BODY=$1 STUB_CODE=$2 STUB_CURL_RC=${3:-0} PATH="$STUB_BIN:$PATH" \
+    scripts/assert-not-public.sh ghcr.io/stakater/ubi/example
+}
+expect_pass "assert-not-public: anonymous access refused (401) passes" not_public '{"token":"t"}' 401
+expect_pass "assert-not-public: anonymous access denied (403) passes" not_public '{"token":"t"}' 403
+expect_pass "assert-not-public: a registry that gives no anonymous token passes" not_public '{"errors":[{"code":"DENIED"}]}' 401
+expect_pass "assert-not-public: a package that does not exist yet (404) passes" not_public '{"token":"t"}' 404
+expect_fail "assert-not-public: anonymous access allowed (200) fails" "PUBLIC" not_public '{"token":"t"}' 200
+expect_fail "assert-not-public: an unexpected status fails, it is not assumed private" "could not tell" not_public '{"token":"t"}' 500
+expect_fail "assert-not-public: a network failure fails, it is not assumed private" "could not tell" not_public '' 000 7
+expect_fail "assert-not-public: a repository outside ghcr.io is refused" "ghcr.io" \
+  env PATH="$STUB_BIN:$PATH" scripts/assert-not-public.sh quay.io/x/y
+
 # ------------------------------------------------------------ copy-image.sh
 # The stub prints STUB_OUT for every call; copy-image reads the destination
 # digest from it after the copy. D1/D2 are two different digests.

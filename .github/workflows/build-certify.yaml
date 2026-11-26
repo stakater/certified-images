@@ -143,11 +143,22 @@ jobs:
           STAGING: ${{ steps.plan.outputs.staging_repository }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
+          # Never add to a package that anyone can pull (ADR-002 rev 5).
+          scripts/assert-not-public.sh "$STAGING"
           # A release tag is never overwritten (ADR-002 rule 3).
           scripts/assert-tag-free.sh "$STAGING" "$TAG"
           ref=$(scripts/push-image.sh "localhost/stakater/$(basename "$IMAGE_DIR"):build" "$STAGING" "$TAG")
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "digest=${ref##*@}" >> "$GITHUB_OUTPUT"
+
+      # A new package is created with the organisation's default visibility,
+      # which a workflow cannot set. If that default is public, fail here, loudly,
+      # and do not sign, attest or promote.
+      - name: Staged package must not be public
+        if: ${{ steps.mode.outputs.stage == 'true' }}
+        env:
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
+        run: scripts/assert-not-public.sh "$STAGING"
 
       - name: Install cosign
         if: ${{ steps.mode.outputs.stage == 'true' }}

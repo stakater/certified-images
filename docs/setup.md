@@ -49,16 +49,25 @@ No secrets are needed: the workflow uses its own token.
    any change that touches the image.
 2. The run's summary shows the staged reference,
    `ghcr.io/stakater/ubi/opencost@sha256:…`, tagged `<upstream-version>-1`.
-3. **Check the package's visibility.** GitHub → the `stakater` organisation →
-   Packages → `ubi/opencost` → Package settings. It must **not** be public. Set
-   it so the organisation can read it (Internal, or Private with the teams that
-   need it). Visibility cannot be set from the workflow, so this is checked by
-   hand for each new image.
+3. **Fix the package's visibility.** This repository is public, so a package
+   it creates is **public by default** (seen on the first run, 2026-11-26).
+   Visibility cannot be set from a workflow. As an organisation admin:
+   - Once, for all future images: Organisation settings → Packages → Package
+     creation → untick **Public**. New packages are then created private.
+   - For a package that already exists: Packages → `ubi/<name>` → Package
+     settings → Change visibility → **Private** or **Internal**, then give the
+     teams that need it read access.
+
+   The pipeline checks this itself (`scripts/assert-not-public.sh`): it asks
+   the registry with no credentials, before and after each staging push, and
+   fails the run if the package can be pulled anonymously. It cannot prevent a
+   brand-new package from being created public; the organisation setting does.
 4. Verify from your own machine with the README's commands, after
    `docker login ghcr.io` with a token that has `read:packages`.
 
 | It fails at | Likely cause |
 |---|---|
+| "Stage to GHCR" or "Staged package must not be public", saying the package is PUBLIC | The package's visibility. Fix it as in step 3 above, then re-run |
 | "Stage to GHCR", with a permission error | The organisation does not let workflows create packages, or the package already exists and is not linked to this repository. An org admin grants this repository write access in the package's settings |
 | "Sign and attest the staged image" | The job lacks `id-token: write`, or Sigstore was unreachable |
 

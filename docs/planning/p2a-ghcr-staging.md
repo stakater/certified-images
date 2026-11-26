@@ -97,6 +97,20 @@ a second, and checks both hold the same digest.
   digest and this repository's workflow identity. It does not expose the image.
 - Verification from outside CI with the README commands.
 
+## What the first real run showed (2026-11-26)
+
+- The workflow token can create the package; push, cosign signing, both SBOM
+  attestations and provenance ran without error. Release 1 of OpenCost is
+  `ghcr.io/stakater/ubi/opencost@sha256:efce362bd3995d99661aa1e3b6e0a2a6d47ae78d9e456b996e17e6b280880d91`.
+- `gh attestation verify` from outside CI passes with the reusable workflow as
+  signer. `cosign verify` has not been run from outside CI yet.
+- **The package was created public**, against the owner's decision. The
+  expectation above ("private, linked to this repo") was wrong: a public
+  repository's packages default to public. Follow-up:
+  `scripts/assert-not-public.sh` fails the run when a staging package is
+  anonymously pullable, and `docs/setup.md` step 1a has the organisation
+  setting that prevents it.
+
 ## Human steps and outward-facing actions
 
 1. Merging this story's PR, then running the `publish` workflow for one image

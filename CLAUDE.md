@@ -191,6 +191,7 @@ scripts/publish-plan.sh        staging repository, and whether and where to publ
 scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
 scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag
 scripts/copy-image.sh          promotes a digest from staging to Red Hat's registry, unchanged
+scripts/assert-not-public.sh   fails if a staging package can be pulled anonymously
 scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched
