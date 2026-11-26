@@ -364,7 +364,7 @@ expect_pass "next-release: signature and non-numeric tags are ignored" \
 expect_fail "next-release: a version is required" "" bash -c 'echo | scripts/next-release.sh'
 
 # ------------------------------------------------------------ list-tags.sh
-# A stub engine stands in for skopeo. STUB_OUT is what it prints, STUB_RC its
+# A stub engine stands in for crane. STUB_OUT is what it prints, STUB_RC its
 # exit status. Getting this wrong reuses a release number, so only an explicit
 # "this repository does not exist" may count as "no tags".
 STUB_ENGINE="$TMP/stub-engine"
@@ -387,12 +387,12 @@ tags_are() { # <expected lines, space separated> <rc> <engine output>
     return 1
   }
 }
-expect_pass "list-tags: prints the tags skopeo returns" \
-  tags_are "v1.2.3-1 v1.2.3-2 " 0 '{"Repository":"r","Tags":["v1.2.3-1","v1.2.3-2"]}'
-expect_pass "list-tags: an existing repository with no tags is empty" tags_are "" 0 '{"Repository":"r","Tags":[]}'
-expect_pass "list-tags: null Tags is empty" tags_are "" 0 '{"Repository":"r","Tags":null}'
+expect_pass "list-tags: prints the tags the registry returns" \
+  tags_are "v1.2.3-1 v1.2.3-2 " 0 "v1.2.3-1
+v1.2.3-2"
+expect_pass "list-tags: an existing repository with no tags is empty" tags_are "" 0 ""
 expect_pass "list-tags: a repository the registry does not know is empty" \
-  tags_are "" 1 'time="x" level=fatal msg="fetching tags list: name unknown: repository name not known to registry"'
+  tags_are "" 1 'Error: reading tags for registry.example/repo: GET https://registry.example/v2/repo/tags/list: NAME_UNKNOWN: repository name not known to registry'
 while IFS='|' read -r name out; do
   [ -z "$name" ] && continue
   expect_fail "list-tags: $name is an error, not 'no tags'" "could not list tags" list_tags 1 "$out"
@@ -400,19 +400,20 @@ done <<'CASES'
 connection refused|level=fatal msg="pinging container registry: dial tcp 10.0.0.1:5000: connect: connection refused"
 DNS failure|level=fatal msg="dial tcp: lookup registry.example: no such host"
 unauthorized|level=fatal msg="fetching tags list: unauthorized: access to the requested resource is not authorized"
-a tool image that could not be pulled|Unable to find image 'quay.io/skopeo/stable' locally: manifest not found
+a tool image that could not be pulled|docker: Error response from daemon: manifest for gcr.io/x@sha256:abc not found: manifest unknown: manifest unknown
 a timeout|level=fatal msg="fetching tags list: context deadline exceeded"
 an empty error|
 CASES
-expect_fail "list-tags: success with output that is not JSON is an error" "could not list tags" list_tags 0 'not json'
+expect_fail "list-tags: success with output that is not a list of tags is an error" "could not list tags" \
+  list_tags 0 'Error: something went wrong'
 
 tag_free() { # <tag> <engine output>
   STUB_RC=0 STUB_OUT=$2 ENGINE="$STUB_ENGINE" REGISTRY_AUTH_FILE=/nonexistent \
     scripts/assert-tag-free.sh registry.example/repo "$1"
 }
-expect_pass "assert-tag-free: a tag that does not exist is free" tag_free v1.2.3-2 '{"Tags":["v1.2.3-1"]}'
-expect_fail "assert-tag-free: an existing tag is refused" "already exists" tag_free v1.2.3-1 '{"Tags":["v1.2.3-1"]}'
-expect_pass "assert-tag-free: a tag that only shares a prefix is free" tag_free v1.2.3-1 '{"Tags":["v1.2.3-10"]}'
+expect_pass "assert-tag-free: a tag that does not exist is free" tag_free v1.2.3-2 'v1.2.3-1'
+expect_fail "assert-tag-free: an existing tag is refused" "already exists" tag_free v1.2.3-1 'v1.2.3-1'
+expect_pass "assert-tag-free: a tag that only shares a prefix is free" tag_free v1.2.3-1 'v1.2.3-10'
 expect_fail "assert-tag-free: if the tags cannot be listed, it refuses" "could not list tags" \
   env STUB_RC=1 STUB_OUT="connection refused" ENGINE="$STUB_ENGINE" REGISTRY_AUTH_FILE=/nonexistent \
   scripts/assert-tag-free.sh registry.example/repo v1.2.3-1

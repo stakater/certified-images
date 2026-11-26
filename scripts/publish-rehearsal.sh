@@ -41,10 +41,10 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 1
 done
 
-# The engine pushes to the published port on localhost. skopeo runs in a
+# The engine pushes to the published port on localhost. crane runs in a
 # container, so it reaches the same repository by the registry's network name.
 tags() {
-  REGISTRY_INSECURE=1 SKOPEO_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
+  REGISTRY_INSECURE=1 TOOL_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
     "$ROOT/scripts/list-tags.sh" "$REG:5000/rehearsal/$NAME"
 }
 
@@ -55,14 +55,14 @@ for expected in 1 2; do
     echo "FAIL - expected release $expected, got $release. Tags the registry listed: '$(echo "$existing" | tr '\n' ' ')'" >&2
     exit 1
   }
-  REGISTRY_INSECURE=1 SKOPEO_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
+  REGISTRY_INSECURE=1 TOOL_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
     "$ROOT/scripts/assert-tag-free.sh" "$REG:5000/rehearsal/$NAME" "$VERSION-$release" 2>/dev/null
   digest=$("$ROOT/scripts/push-image.sh" "$REF" "$REPO" "$VERSION-$release" 2>/dev/null)
   "$ENGINE" pull -q "$digest" >/dev/null
   echo "ok   - release $release pushed as $VERSION-$release and pulled back by digest"
 done
 # The tag just pushed must now be refused.
-if REGISTRY_INSECURE=1 SKOPEO_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
+if REGISTRY_INSECURE=1 TOOL_NETWORK=$NET REGISTRY_AUTH_FILE=/nonexistent \
   "$ROOT/scripts/assert-tag-free.sh" "$REG:5000/rehearsal/$NAME" "$VERSION-2" 2>/dev/null; then
   echo "FAIL - an existing tag was reported as free" >&2
   exit 1
