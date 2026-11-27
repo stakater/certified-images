@@ -70,6 +70,7 @@ probe() { # <path>
       [ ["name"], ["certification_status"], ["project_status"], ["type"],
         ["container","type"], ["container","os_content_type"], ["container","distribution_method"],
         ["container","distribution_approval"], ["container","release_category"],
+        ["container","hosted_registry"], ["container","registry"],
         ["container","repository_namespace"], ["container","repository_name"], ["container","isv_pid"] ] as $allowed
       | . as $doc
       | if type == "object" then

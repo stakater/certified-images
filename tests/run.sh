@@ -480,6 +480,40 @@ expect_pass "rh-registry-login: a secret that is not JSON is an error, not a ski
 expect_pass "rh-registry-login: a failed login is an error, not a skip" \
   bash -c "$(declare -f rh login); RH='$RH'; STUB_DOCKER_RC=1 login '$KEYS' $CID >/dev/null 2>&1; [ \$? = 1 ]"
 
+# ------------------------------------------------------ preflight-submit.sh
+# OUTWARD-FACING in real life; here a stub engine stands in for preflight and
+# prints STUB_OUT as its results. What is tested: the script's own decisions.
+SUB="$TMP/submit"
+mkdir -p "$SUB/bin"
+cat >"$SUB/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$SUB_LOG/args"
+printf '%s' "$STUB_OUT"
+exit "${STUB_RC:-0}"
+STUB
+chmod +x "$SUB/bin/docker"
+submit() { # <token> <results json> <ref> <component> [auth file]
+  rm -rf "$SUB/log" && mkdir -p "$SUB/log"
+  SUB_LOG="$SUB/log" ENGINE="$SUB/bin/docker" PFLT_PYXIS_API_TOKEN="$1" STUB_OUT="$2" \
+    PREFLIGHT_OUT="$SUB/out" REGISTRY_AUTH_FILE="${5:-/nonexistent}" \
+    scripts/preflight-submit.sh "$3" "$4"
+}
+PASSED='{"passed":true,"results":{"passed":[{"name":"HasLicense"}],"failed":[],"errors":[]}}'
+FAILED='{"passed":false,"results":{"passed":[],"failed":[{"name":"HasLicense"}],"errors":[]}}'
+SREF=ghcr.io/stakater/ubi/example:v1.2.3-1
+expect_pass "preflight-submit: a public source image needs no registry login" submit tok-SUBMITSECRET "$PASSED" "$SREF" "$CID"
+expect_pass "preflight-submit: it submits to the component it was given" \
+  bash -c "grep -q -- '--submit' '$SUB/log/args' && grep -q -- '--certification-component-id $CID' '$SUB/log/args' && grep -q '$SREF' '$SUB/log/args'"
+expect_pass "preflight-submit: the API key is passed by name, never by value" \
+  bash -c "grep -q -- '-e PFLT_PYXIS_API_TOKEN' '$SUB/log/args' && ! grep -q SUBMITSECRET '$SUB/log/args'"
+expect_pass "preflight-submit: no --docker-config when there is no login" bash -c "! grep -q -- '--docker-config' '$SUB/log/args'"
+touch "$SUB/auth.json"
+expect_pass "preflight-submit: a registry login, when present, is passed on" \
+  bash -c "$(declare -f submit); SUB='$SUB'; submit tok '$PASSED' '$SREF' '$CID' '$SUB/auth.json' >/dev/null 2>&1 && grep -q -- '--docker-config' '$SUB/log/args'"
+expect_fail "preflight-submit: checks that did not pass fail the run" "did not pass" submit tok "$FAILED" "$SREF" "$CID"
+expect_fail "preflight-submit: refuses to run without the API key" "PFLT_PYXIS_API_TOKEN" submit "" "$PASSED" "$SREF" "$CID"
+expect_fail "preflight-submit: refuses a malformed component ID" "component" submit tok "$PASSED" "$SREF" not-an-id
+
 # ------------------------------------------------------------ list-tags.sh
 # A stub engine stands in for crane. STUB_OUT is what it prints, STUB_RC its
 # exit status. Getting this wrong reuses a release number, so only an explicit

@@ -1,0 +1,108 @@
+# Manual, OUTWARD-FACING: submits one already staged image to Red Hat for
+# certification, by running preflight with --submit against its GHCR reference.
+#
+# Why this exists: to find out, with one real submission, how a component set
+# up as "Red Hat distributes, we host the source" behaves. It needs only
+# RH_PYXIS_TOKEN: no Red Hat registry login, no push, no copy. If the image
+# then appears under registry.connect.redhat.com, this becomes the pipeline's
+# Red Hat stage. Nothing else in the pipeline is changed by running it.
+name: rh-submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image name (the directory under images/), e.g. reloader-operator
+        required: true
+        type: string
+      tag:
+        description: Staged tag to submit, e.g. v2.0.0-beta.3-2
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# bash, named explicitly, runs with pipefail. The default shell does not, and
+# then a failure on the left of a pipe is silently ignored.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  submit:
+    name: submit ${{ inputs.image }}:${{ inputs.tag }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve the image and its component
+        id: plan
+        env:
+          IMAGE: ${{ inputs.image }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "$IMAGE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || [ ! -f "images/$IMAGE/image.yaml" ]; then
+            echo "::error::No such image: $IMAGE"
+            exit 1
+          fi
+          if ! [[ "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::Not a valid tag: $TAG"
+            exit 1
+          fi
+          plan=$(scripts/publish-plan.sh "images/$IMAGE")
+          printf '%s\n' "$plan" >> "$GITHUB_OUTPUT"
+          if ! printf '%s\n' "$plan" | grep -qx 'publishable=true'; then
+            echo "::error::images/$IMAGE has no Partner Connect component ID"
+            exit 1
+          fi
+
+      - name: The staged tag exists, and Red Hat can pull it
+        env:
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          tags=$(REGISTRY_AUTH_FILE=/nonexistent scripts/list-tags.sh "$STAGING")
+          if ! printf '%s\n' "$tags" | grep -qxF -- "$TAG"; then
+            echo "::error::$STAGING:$TAG is not staged, or is not publicly readable"
+            exit 1
+          fi
+          # Red Hat pulls the image itself, with no credentials of ours.
+          scripts/assert-visibility.sh "$STAGING" public
+
+      - name: Submit to Red Hat for certification
+        env:
+          PFLT_PYXIS_API_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
+          REGISTRY_AUTH_FILE: /nonexistent
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
+          TAG: ${{ inputs.tag }}
+          COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
+        run: scripts/preflight-submit.sh "$STAGING:$TAG" "$COMPONENT_ID"
+
+      - name: Summary
+        if: ${{ success() }}
+        env:
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
+          TAG: ${{ inputs.tag }}
+          COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
+        run: |
+          {
+            echo "### Submitted \`$STAGING:$TAG\` to component \`$COMPONENT_ID\`"
+            echo
+            echo "Check in Partner Connect: https://connect.redhat.com/component/view/$COMPONENT_ID/images"
+            echo
+            echo "What to look for: the image and its test results, and which registry its pull command names."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the preflight results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: preflight-submit-${{ inputs.image }}
+          path: .ctx/preflight-submit/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
