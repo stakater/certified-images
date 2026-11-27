@@ -29,7 +29,8 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | Smoke test on a real OpenShift cluster, gating promotion to Red Hat | Not built. Needs a cluster and credentials (story P.2b, level 2) |
 | Release numbering, push, promotion by digest | Rehearsed on every PR against a throwaway local registry |
 | **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Works. First run 2026-11-26. Provenance verified from outside CI with `gh attestation verify`; the `cosign verify` commands have not been run yet |
-| **Red Hat**: login, copy by digest, signing, `preflight --submit` | Written, **never run**. Needs the secrets in [docs/setup.md](docs/setup.md) |
+| **Red Hat, when Red Hat lists and we host** (setup B): submit the GHCR image | Works. First submission 2026-11-27, by hand; now part of the pipeline. Needs only `RH_PYXIS_TOKEN` |
+| **Red Hat, when Red Hat hosts** (setup A): login, copy by digest, signing, submit | Written, **never run**. Needs the component's registry key |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
 Images:
@@ -37,16 +38,18 @@ Images:
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
 | `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
-| `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | `registry.connect.redhat.com/stakater/reloader-operator`. Component `6af9776fa950dc6dbfa4d693` set; not published: its registry key is not in `RH_REGISTRY_KEYS` yet |
+| `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and published**: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ⚠️ An authenticated pull from that address has not been tried yet |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 
-### Two registries
+### Where images live
 
-| Registry | What it holds | Who uses it |
-|---|---|---|
-| `ghcr.io/stakater/ubi/<name>` (staging) | Every build that passes the checks. Private by default; an image may declare `staging.visibility: public` in `image.yaml` (open-source rebuilds only) | Stakater teams, for testing |
-| `registry.connect.redhat.com/stakater/<name>` (certified) | The same digest, after Red Hat certification | Anything shipped to a customer. A certified operator bundle must reference this one, never GHCR |
+| Address | What it is |
+|---|---|
+| `ghcr.io/stakater/ubi/<name>` | Our registry. Every build that passes the checks, signed, with SBOMs. Private by default; an image may declare itself public (open-source rebuilds only) |
+| `registry.connect.redhat.com/stakater/<name>` | Red Hat's address for the certified image. This is what customers and certified operator bundles reference |
+
+For most images Red Hat serves that address **from our GHCR**: we host, Red Hat lists. Being on GHCR does not make an image certified; being submitted and accepted does. A tag that Red Hat lists must never be deleted from GHCR.
 
 How we work: [docs/method.md](docs/method.md).
 
@@ -247,7 +250,7 @@ tests/                          # tests for the scripts and the checks
 .github/workflows/publish.yaml        # calls it with publish=true on merges to main: stage to GHCR, then Red Hat when ready
 .github/workflows/verify.yaml         # make verify on pull requests
 .github/workflows/pyxis-probe.yaml    # manual: what Red Hat's API returns for a component, names only
-.github/workflows/rh-submit.yaml      # manual, OUTWARD-FACING: submit one staged image to Red Hat from GHCR (a test of that route)
+.github/workflows/rh-submit.yaml      # manual, OUTWARD-FACING: submit a tag already on GHCR to Red Hat (setup B)
 renovate.json                   # upstream tag+commit, UBI digest, toolchain digest, tool images
 docs/                           # vision, method, roadmap, planning docs, ADRs, references
 ```
@@ -274,25 +277,32 @@ On a merge to `main` that touches an image (`publish.yaml`), the same job contin
 10. **Push** to `ghcr.io/stakater/ubi/<name>`. A tag that already exists is refused.
 11. **Sign** the digest with cosign (keyless), and **attest** both SBOMs and the build provenance.
 
-**Stage 2, when the image is ready: Red Hat.** Runs only if the image has a Partner Connect component ID and its secrets exist. Otherwise the run says what is missing and stops after stage 1.
+**Stage 2, when the image has a Partner Connect component ID: Red Hat.** The pipeline asks Red Hat how the component is distributed and follows that.
 
-12. **Copy the staged digest** to `quay.io/redhat-isv-containers/<componentId>`, with the same tag. The copy fails unless the digest arrives unchanged.
-13. **Sign and attest** that reference.
-14. **Submit** to Red Hat with `preflight --submit`. Partner Connect then publishes the image.
+*Red Hat lists it, we host it (setup B, the default):*
+
+12. **Submit** the GHCR image to Red Hat with `preflight --submit`. Red Hat certifies it and lists it under `registry.connect.redhat.com`. Needs only `RH_PYXIS_TOKEN`: no login, no push, no copy.
+
+*Red Hat hosts it (setup A):*
+
+12. **Copy the same digest** to `quay.io/redhat-isv-containers/<componentId>`, using that component's registry key. The copy fails unless the digest arrives unchanged.
+13. **Sign and attest** that reference, then **submit**.
+
+If `RH_PYXIS_TOKEN` is missing, or a setup A component has no registry key, the run says what is missing and stops after stage 1.
 
 To republish one image after a pipeline change, run the `publish` workflow by hand with the image name.
 
 ### Setup and secrets
-Staging to GHCR needs no secrets. The Red Hat stage needs **two repository secrets in total**, however many images there are. No secret is named per image:
+Pushing to GHCR needs no secrets. Red Hat needs **one repository secret**, and a second only for Red Hat-hosted components. No secret is named per image:
 
-| Secret | What |
-|---|---|
-| `RH_PYXIS_TOKEN` | Partner Connect API key for submitting certification results. One key covers every component |
-| `RH_REGISTRY_KEYS` | One JSON object holding each component's registry key, keyed by component ID, each with the image's name so it is readable. The username is derived from the component ID |
+| Secret | Needed for | What |
+|---|---|---|
+| `RH_PYXIS_TOKEN` | Every component | Partner Connect API key. Submits certification results and reads how a component is distributed |
+| `RH_REGISTRY_KEYS` | Only components Red Hat hosts (setup A) | One JSON object holding each such component's registry key, keyed by component ID |
 
-Fetching the registry keys from Red Hat's API with the API key was tried on 2026-11-26 and is not possible; `RH_REGISTRY_KEYS` is how they are held. The `pyxis-probe` workflow shows a component's settings as Red Hat has them, which is useful for checking a new component.
+A component created as "Red Hat lists it, we host it" needs no registry key at all. See [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 
-**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add the two secrets once; then per image, create the component, add its registry key as one entry in `RH_REGISTRY_KEYS`, and merge the PR that sets the component ID. That merge is the publish.
+**[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add `RH_PYXIS_TOKEN` once; then per image, create the component and merge the PR that sets its ID. Only a Red Hat-hosted component also needs an entry in `RH_REGISTRY_KEYS`. That merge is the publish.
 
 ## Run it locally
 You need docker or podman, `make`, `git` and `jq`. Every other tool runs from a container image pinned by digest.

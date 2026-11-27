@@ -46,7 +46,9 @@ smoke:
 
 redhat:
   # Partner Connect container component "Reloader Operator Container".
-  # Public pull spec after certification: registry.connect.redhat.com/stakater/reloader-operator
+  # Customers pull: registry.connect.redhat.com/stakater/reloader-operator
+  # Red Hat lists this component and we host the image on GHCR (setup B in
+  # docs/red-hat-distribution.md), so it needs no registry key.
   componentId: "6af9776fa950dc6dbfa4d693"
   # Push target: quay.io/redhat-isv-containers/6af9776fa950dc6dbfa4d693
 

@@ -109,15 +109,18 @@ These follow from "Red Hat's address, our storage". Each is ⚠️ until tested.
 | A customer wants to verify our signature | Signatures would have to be on Red Hat's registry | The signature is on GHCR for the same digest, so it can be verified there |
 | We want Red Hat to carry the storage risk | Yes | No: GHCR is a production dependency |
 
-## Why this matters for the pipeline
+## What the pipeline does with this
 
-- In setup B, GHCR is not a staging area that happens to feed Red Hat. **It is
-  where the published image lives.** Calling the path "staging" and saying
-  "nothing we ship references it" is no longer accurate for B images, and
-  ADR-002 needs a revision to say so.
-- The Red Hat stage for a B component is one step: submit the GHCR image. No
-  login, no copy, no second signature.
-- A components still need the copy and a registry key.
+- It asks Red Hat's API for the component's record
+  (`scripts/rh-component-info.sh`) and follows it. Nothing is declared in
+  `image.yaml`, and if the record cannot be read the run fails.
+- **Setup B:** one step, submit the GHCR image. No login, no copy, no second
+  signature.
+- **Setup A:** copy the same digest to Red Hat's registry with the component's
+  key, sign it there, submit.
+- **Setup C** is refused: this pipeline does not publish to it.
+- In setup B, GHCR is not a staging area. **It is where the published image
+  lives** (ADR-002 rev 8). A tag Red Hat lists is never deleted.
 
 ## How to prove the two ⚠️ points
 

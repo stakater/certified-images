@@ -118,6 +118,13 @@ created one and the publish job will be put behind it.
 
 ## 4. Create the Partner Connect component
 
+**Create new components as "Red Hat lists it, we host it" (setup B).** It needs
+no registry key, so adding an image adds no secret. The choice is made when
+the component is created and, as far as we know, cannot be changed afterwards.
+⚠️ The exact wording of that choice in the form is not recorded here; the sign
+you got it right is that the component's "Set up Preflight" page shows no
+registry login.
+
 In Red Hat Partner Connect, under the Stakater product the image ships with:
 
 1. Add component → **Container image**.
@@ -137,13 +144,17 @@ complete without it.
 
 ## 6. Add the secrets
 
-**Two secrets for the whole repository, however many images there are.** No
-secret is named per image (ADR-002 rev 7).
+**One secret for the whole repository, however many images there are**, and a
+second only if some component is hosted by Red Hat. No secret is named per
+image (ADR-002 rev 8).
 
-| Secret | How many | What it is |
+| Secret | Needed for | What it is |
 |---|---|---|
-| `RH_PYXIS_TOKEN` | one | Partner Connect (Pyxis) API key. Submits certification results |
-| `RH_REGISTRY_KEYS` | one | The registry keys of every component, as one JSON object |
+| `RH_PYXIS_TOKEN` | every component | Partner Connect (Pyxis) API key. Submits certification results |
+| `RH_REGISTRY_KEYS` | only components Red Hat hosts (setup A) | Those components' registry keys, as one JSON object |
+
+A component Red Hat lists while we host the image (setup B) needs no registry
+key: skip step 6b for it. `docs/red-hat-distribution.md` explains the setups.
 
 ### 6a. `RH_PYXIS_TOKEN` — once
 
@@ -161,10 +172,12 @@ changes, or the key is revoked, every publish fails at "Submit to Red Hat".
 repository changes. Record who holds the account and when the key was last
 rotated wherever the team keeps its runbooks.
 
-### 6b. `RH_REGISTRY_KEYS` — one secret, one entry per component
+### 6b. `RH_REGISTRY_KEYS` — only for components Red Hat hosts
 
-Red Hat gives each component its own repository and its own registry key. The
-pipeline keeps all of them in one secret:
+A Red Hat-hosted component (setup A) has its own repository on Red Hat's
+registry and its own registry key. You can tell which kind a component is from
+its "Set up Preflight" page: setup A shows a registry login, setup B shows
+none. The pipeline keeps all setup A keys in one secret:
 
 ```json
 {

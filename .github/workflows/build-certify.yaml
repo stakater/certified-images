@@ -3,12 +3,16 @@
 # Always: pinned source -> Hermeto prefetch -> offline build -> start-up test ->
 # SBOMs + CVE gate -> preflight dry run.
 #
-# With publish=true, two more stages (ADR-002 rev 5):
-#   1. Stage:   push to GHCR (ghcr.io/stakater/ubi/<name>), sign, attest.
-#               Every image, with the workflow's own token.
-#   2. Red Hat: copy the same digest to Red Hat's partner registry, sign,
-#               attest, preflight --submit. Only for an image that has a Partner
-#               Connect component ID and whose secrets exist.
+# With publish=true, two more stages (ADR-002 rev 8):
+#   1. GHCR:    push to ghcr.io/stakater/ubi/<name>, sign, attest. Every image,
+#               with the workflow's own token.
+#   2. Red Hat: only for an image with a Partner Connect component ID. Red Hat
+#               is asked how the component is distributed, and then either
+#               B. Red Hat lists it, we host it: submit the GHCR image. Needs
+#                  only RH_PYXIS_TOKEN. No login, no push, no copy.
+#               A. Red Hat hosts it: copy the same digest to Red Hat's registry
+#                  with the component's registry key, sign, attest, submit.
+#               See docs/red-hat-distribution.md.
 #
 # One job on purpose: the image that was tested is the image that is pushed.
 # Every step is a script or make target, so `make image IMAGE=<name>` runs the
@@ -83,9 +87,9 @@ jobs:
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
           echo "redhat=$redhat" >> "$GITHUB_OUTPUT"
           if [ "$stage" = "true" ] && [ "$redhat" = "false" ]; then
-            echo "::warning title=Not published to Red Hat::$IMAGE_DIR is staged to GHCR only: $why"
+            echo "::warning title=Not submitted to Red Hat::$IMAGE_DIR is on GHCR only: $why"
             {
-              echo "### $IMAGE_DIR: staged to GHCR, **not published to Red Hat**"
+              echo "### $IMAGE_DIR: on GHCR, **not submitted to Red Hat**"
               echo "$why"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -201,22 +205,68 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           {
-            echo "### $IMAGE_DIR staged as \`$TAG\`"
+            echo "### $IMAGE_DIR pushed to GHCR as \`$TAG\`"
             echo
             echo "Pushed, signed and attested: \`$REF\`"
             echo
-            echo "For testing only. Customer-facing manifests reference Red Hat's registry."
+            echo "Not certified by this step. Customer-facing manifests reference Red Hat's registry."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------- stage 2: Red Hat
-      # Outward-facing: publishes to Red Hat and submits for certification.
+      # Outward-facing: submits for certification, and for a Red Hat-hosted
+      # component also publishes to Red Hat's registry.
+
+      # Red Hat's own record says who stores the image. The pipeline reads it
+      # there and never guesses which registry to publish to.
+      - name: How Red Hat distributes this component
+        id: rhmode
+        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        env:
+          RH_PYXIS_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
+          COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
+        run: scripts/rh-component-info.sh "$COMPONENT_ID" | tee -a "$GITHUB_OUTPUT"
+
+      # ---- setup B: Red Hat lists it under its own address, we host it on GHCR.
+      # One step: preflight checks the GHCR image and submits the results.
+      - name: Submit the GHCR image to Red Hat
+        if: ${{ steps.rhmode.outputs.hosted == 'false' }}
+        env:
+          # One Partner Connect API key for every component (ADR-002 rule 5).
+          PFLT_PYXIS_API_TOKEN: ${{ secrets.RH_PYXIS_TOKEN }}
+          STAGING: ${{ steps.plan.outputs.staging_repository }}
+          VISIBILITY: ${{ steps.plan.outputs.staging_visibility }}
+          TAG: ${{ steps.release.outputs.tag }}
+          COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
+        run: |
+          if [ "$VISIBILITY" != "public" ]; then
+            echo "::warning title=Private image, Red Hat-listed::$STAGING is private. Red Hat serves customers from it, so Red Hat needs a read-only credential for it in Partner Connect (docs/red-hat-distribution.md)."
+          fi
+          PREFLIGHT_OUT=".ctx/$(basename "$IMAGE_DIR")/evidence/preflight-submit" \
+            scripts/preflight-submit.sh "$STAGING:$TAG" "$COMPONENT_ID"
+
+      - name: Summary (Red Hat, listed from GHCR)
+        if: ${{ steps.rhmode.outputs.hosted == 'false' }}
+        env:
+          STAGED: ${{ steps.stage.outputs.ref }}
+          PULL: ${{ steps.rhmode.outputs.pull_repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          {
+            echo "### $IMAGE_DIR submitted to Red Hat as \`$TAG\`"
+            echo
+            echo "Customers pull: \`$PULL@${STAGED##*@}\`"
+            echo
+            echo "Stored on GHCR: \`$STAGED\`. That tag must never be deleted: it is what Red Hat serves."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---- setup A: Red Hat hosts it. Copy the same digest there, sign, submit.
 
       # No secret is named per image (ADR-002 rev 7). The username comes from the
       # component ID; the key comes from the one shared RH_REGISTRY_KEYS secret.
       # If there is no key for this component yet, the stage is skipped, loudly.
       - name: Log in to Red Hat's partner registry
         id: rhlogin
-        if: ${{ steps.mode.outputs.redhat == 'true' }}
+        if: ${{ steps.rhmode.outputs.hosted == 'true' }}
         env:
           RH_REGISTRY_KEYS: ${{ secrets.RH_REGISTRY_KEYS }}
           COMPONENT_ID: ${{ steps.plan.outputs.component_id }}
