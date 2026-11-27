@@ -174,7 +174,7 @@ mirror, so that showback works without internet access.*
 - Split the pipeline into build-and-stage, test-on-OpenShift, promote-to-Red-Hat, once the OpenShift runner exists (P.2b level 2).
 - Reloader Console (Partner Connect component `6af9ac3f8523cfd9714c7645`) and Reloader Gateway (`6af9ac54ad3a47dac910b90b`): components exist; their source repository and release tags are not yet known to this repo.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).
-- Crossplane core (`images/crossplane`) is added as a `kind: container` image so providers have something certified to run on; first built by the pull request that adds it. ⚠️ Admission (a) and the consuming product's name are not confirmed.
+- Crossplane core (`images/crossplane`) is added as a `kind: container` image so providers have something certified to run on; first built by the pull request that adds it. Admission (a) checked 2026-11-27: Red Hat's catalog API lists no container repository named or described as Crossplane, from Red Hat or any partner; the only Crossplane entries are operator bundles from IBM (last bundle 2024) and the community (Upbound's `universal-crossplane`, Crossplane 1.5), neither a Red Hat image. ⚠️ The consuming product's name is not confirmed.
 - Crossplane, next step: build one small provider as `kind: xpkg` on pull requests only, and run Red Hat's preflight against the resulting xpkg (ADR-005). The spike of 2026-11-27 showed the pod runs the xpkg itself.
 - First SCO Crossplane provider (ADR-005), after its open questions are answered.
 - Assess the pipeline against SLSA v1 Build L3 and record the result (ADR-007).
