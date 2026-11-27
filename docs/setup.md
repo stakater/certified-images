@@ -118,12 +118,11 @@ created one and the publish job will be put behind it.
 
 ## 4. Create the Partner Connect component
 
-**Create new components as "Red Hat lists it, we host it" (setup B).** It needs
-no registry key, so adding an image adds no secret. The choice is made when
-the component is created and, as far as we know, cannot be changed afterwards.
-⚠️ The exact wording of that choice in the form is not recorded here; the sign
-you got it right is that the component's "Set up Preflight" page shows no
-registry login.
+**Create new components as Red Hat-hosted (setup A).** That is the route that has
+been seen to deliver an image to a customer. The choice is made when the
+component is created and, as far as we know, cannot be changed afterwards. The
+sign you got it right: the component's "Set up Preflight" page shows a
+registry login. Its key goes into `RH_REGISTRY_KEYS` (step 6b).
 
 In Red Hat Partner Connect, under the Stakater product the image ships with:
 
