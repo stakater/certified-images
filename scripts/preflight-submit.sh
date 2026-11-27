@@ -24,6 +24,8 @@ COMPONENT=${2:?usage: preflight-submit.sh <repository:tag> <component-id>}
 
 OUT=${PREFLIGHT_OUT:-$PWD/.ctx/preflight-submit}
 mkdir -p "$OUT"
+# The container engine only accepts an absolute path as a volume.
+OUT=$(cd "$OUT" && pwd)
 
 auth=${REGISTRY_AUTH_FILE:-${DOCKER_CONFIG:-$HOME/.docker}/config.json}
 mounts=()

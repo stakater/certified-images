@@ -531,6 +531,15 @@ expect_pass "preflight-submit: no --docker-config when there is no login" bash -
 touch "$SUB/auth.json"
 expect_pass "preflight-submit: a registry login, when present, is passed on" \
   bash -c "$(declare -f submit); SUB='$SUB'; submit tok '$PASSED' '$SREF' '$CID' '$SUB/auth.json' >/dev/null 2>&1 && grep -q -- '--docker-config' '$SUB/log/args'"
+# The engine rejects a relative path as a volume, and the pipeline passes one.
+rel_out() {
+  rm -rf "$SUB/log" && mkdir -p "$SUB/log" "$SUB/cwd"
+  (cd "$SUB/cwd" && SUB_LOG="$SUB/log" ENGINE="$SUB/bin/docker" PFLT_PYXIS_API_TOKEN=tok STUB_OUT="$PASSED" \
+    PREFLIGHT_OUT=".ctx/example/evidence/preflight-submit" REGISTRY_AUTH_FILE=/nonexistent \
+    "$ROOT/scripts/preflight-submit.sh" "$SREF" "$CID") >/dev/null 2>&1 || return 1
+  grep -qE -- '-v /[^ ]*/\.ctx/example/evidence/preflight-submit:/artifacts' "$SUB/log/args"
+}
+expect_pass "preflight-submit: a relative output folder is mounted by its absolute path" rel_out
 expect_fail "preflight-submit: checks that did not pass fail the run" "did not pass" submit tok "$FAILED" "$SREF" "$CID"
 expect_fail "preflight-submit: refuses to run without the API key" "PFLT_PYXIS_API_TOKEN" submit "" "$PASSED" "$SREF" "$CID"
 expect_fail "preflight-submit: refuses a malformed component ID" "component" submit tok "$PASSED" "$SREF" not-an-id
