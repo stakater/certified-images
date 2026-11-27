@@ -123,15 +123,18 @@ does not work is caught before it is published.*
   2026-11-26: the control passed and the main assertion failed after its
   timeout, as it should. Not yet run on OpenShift (P.2b level 2).
 
-**Story P.2d — Red Hat lists it, we host it** ✅ *(approved 2026-11-27; decision: ADR-002 rev 8; explainer: [red-hat-distribution](red-hat-distribution.md))*
+**Story P.2d — Red Hat lists it, we host it** 🔨 *(approved 2026-11-27; decision: ADR-002 rev 8; explainer: [red-hat-distribution](red-hat-distribution.md))*
 *As the factory team, I want an image certified and listed by Red Hat without
 pushing it to Red Hat's registry, so that adding an image adds no secret.*
 - **Done:** the pipeline asks Red Hat how a component is distributed and, for a
   component Red Hat does not host, submits the GHCR image with only
   `RH_PYXIS_TOKEN`; Reloader v2 is certified and listed at
   `registry.connect.redhat.com/stakater/reloader-operator` this way.
-- **Open:** an authenticated pull from Red Hat's address, and how Red Hat
-  serves it (from GHCR or from a copy), have not been observed.
+- **Not done after all:** on 2026-11-27 an authenticated pull from Red Hat's
+  address was refused ("unauthorized"), while Red Hat-hosted Stakater images
+  pull with the same login. Certification and listing work; delivery to a
+  customer is not proven. Cause unknown. This story is 🔨, not ✅, until that
+  pull works.
 
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my

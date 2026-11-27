@@ -29,7 +29,7 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | Smoke test on a real OpenShift cluster, gating promotion to Red Hat | Not built. Needs a cluster and credentials (story P.2b, level 2) |
 | Release numbering, push, promotion by digest | Rehearsed on every PR against a throwaway local registry |
 | **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Works. First run 2026-11-26. Provenance verified from outside CI with `gh attestation verify`; the `cosign verify` commands have not been run yet |
-| **Red Hat, when Red Hat lists and we host** (setup B): submit the GHCR image | Works. First submission 2026-11-27, by hand; now part of the pipeline. Needs only `RH_PYXIS_TOKEN` |
+| **Red Hat, when Red Hat lists and we host** (setup B): submit the GHCR image | Submission and certification work (first on 2026-11-27). ❌ The certified image is not yet pullable from Red Hat's address, so the route is **not proven end to end** |
 | **Red Hat, when Red Hat hosts** (setup A): login, copy by digest, signing, submit | Written, **never run**. Needs the component's registry key |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
@@ -38,7 +38,7 @@ Images:
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
 | `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
-| `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and published**: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ⚠️ An authenticated pull from that address has not been tried yet |
+| `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and listed** in Red Hat's catalog: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ❌ **Not pullable from that address yet**: Red Hat's registry answers "unauthorized" with a valid login ([details](docs/red-hat-distribution.md)) |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 

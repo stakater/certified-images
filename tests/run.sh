@@ -461,9 +461,11 @@ expect_pass "pyxis-probe: fields that hold nothing are still listed" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '{\"registry_credentials\":{},\"docker_config_json\":null}' | grep -q 'registry_credentials  (object, empty)'"
 # A few settings describe the component and are not secrets. Their values help
 # check it was created correctly. Everything else stays names-only.
-SETTINGS='{"name":"Reloader (operator) container","certification_status":"In Progress","container":{"repository_namespace":"stakater","repository_name":"reloader","os_content_type":"Red Hat Universal Base Image (UBI)","distribution_method":"rhcc","password":"hunter2-SECRETVALUE"},"contacts":[{"email_address":"person@example.com"}]}'
+SETTINGS='{"name":"Reloader (operator) container","certification_status":"In Progress","container":{"repository_namespace":"stakater","repository_name":"reloader","repository":"stakater/ubi/reloader","os_content_type":"Red Hat Universal Base Image (UBI)","distribution_method":"rhcc","password":"hunter2-SECRETVALUE"},"contacts":[{"email_address":"person@example.com"}]}'
 expect_pass "pyxis-probe: shows the component's non-secret settings" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$SETTINGS' | grep -q 'container.repository_name = reloader'"
+expect_pass "pyxis-probe: shows where Red Hat thinks the image lives" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$SETTINGS' | grep -q 'container.repository = stakater/ubi/reloader'"
 expect_pass "pyxis-probe: shows nothing outside that short list" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$SETTINGS' | grep -qE 'SECRETVALUE|person@example.com'"
 expect_fail "pyxis-probe: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/pyxis-probe.sh "$CID"
@@ -531,6 +533,15 @@ expect_pass "preflight-submit: no --docker-config when there is no login" bash -
 touch "$SUB/auth.json"
 expect_pass "preflight-submit: a registry login, when present, is passed on" \
   bash -c "$(declare -f submit); SUB='$SUB'; submit tok '$PASSED' '$SREF' '$CID' '$SUB/auth.json' >/dev/null 2>&1 && grep -q -- '--docker-config' '$SUB/log/args'"
+# The engine rejects a relative path as a volume, and the pipeline passes one.
+rel_out() {
+  rm -rf "$SUB/log" && mkdir -p "$SUB/log" "$SUB/cwd"
+  (cd "$SUB/cwd" && SUB_LOG="$SUB/log" ENGINE="$SUB/bin/docker" PFLT_PYXIS_API_TOKEN=tok STUB_OUT="$PASSED" \
+    PREFLIGHT_OUT=".ctx/example/evidence/preflight-submit" REGISTRY_AUTH_FILE=/nonexistent \
+    "$ROOT/scripts/preflight-submit.sh" "$SREF" "$CID") >/dev/null 2>&1 || return 1
+  grep -qE -- '-v /[^ ]*/\.ctx/example/evidence/preflight-submit:/artifacts' "$SUB/log/args"
+}
+expect_pass "preflight-submit: a relative output folder is mounted by its absolute path" rel_out
 expect_fail "preflight-submit: checks that did not pass fail the run" "did not pass" submit tok "$FAILED" "$SREF" "$CID"
 expect_fail "preflight-submit: refuses to run without the API key" "PFLT_PYXIS_API_TOKEN" submit "" "$PASSED" "$SREF" "$CID"
 expect_fail "preflight-submit: refuses a malformed component ID" "component" submit tok "$PASSED" "$SREF" not-an-id

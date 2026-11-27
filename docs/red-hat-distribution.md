@@ -21,10 +21,27 @@ Reloader's component is **B**. OpenCost's and the MTO components are **A**.
 ## The short answers
 
 **Does a customer always pull from `registry.connect.redhat.com` in setup B?**
-Yes, as far as the catalog is concerned. ✅ Red Hat's catalog lists exactly one
-address for the image, `registry.connect.redhat.com/stakater/reloader-operator`,
-and has no `ghcr.io` entry for it. ⚠️ Nobody has yet done an authenticated pull
-from that address to see it work.
+That is the only address the catalog gives. ✅ Red Hat's catalog lists exactly
+one address for the image,
+`registry.connect.redhat.com/stakater/reloader-operator`, and has no `ghcr.io`
+entry for it.
+
+**But that address does not serve the image yet.** ❌ Tried on 2026-11-27,
+about four and a half hours after Red Hat listed it, with a valid Red Hat
+login:
+
+| Reference on `registry.connect.redhat.com` | Answer |
+|---|---|
+| `stakater/mto-console`, `stakater/tenant-operator` (Red Hat-hosted) | readable |
+| a repository that does not exist | "no such manifest" |
+| `stakater/reloader-operator`, by tag and by digest | **"unauthorized"** |
+
+So Red Hat's registry knows the repository and refuses to serve it. Red Hat's
+record of where the image lives is correct (`ghcr.io`,
+`stakater/ubi/reloader-operator`, which is public). The cause is not known. It
+may be a delay on Red Hat's side, or setup B may need something we have not
+done. **Until a pull from that address works, setup B is not proven and no
+customer-facing manifest should reference a setup B image.**
 
 **Is Red Hat then hosting the image on its registry?**
 By Red Hat's own record, no. ✅ The component says `hosted_registry = false` and
@@ -122,9 +139,10 @@ These follow from "Red Hat's address, our storage". Each is ⚠️ until tested.
 - In setup B, GHCR is not a staging area. **It is where the published image
   lives** (ADR-002 rev 8). A tag Red Hat lists is never deleted.
 
-## How to prove the two ⚠️ points
+## How to prove the open points
 
-**1. That the published address pulls** (needs a Red Hat login):
+**1. That the published address pulls** (needs a Red Hat login). This currently
+fails, see above; re-run it to see whether that has changed:
 
 ```
 podman login registry.connect.redhat.com
