@@ -159,6 +159,9 @@ smoke_path=$(get .smoke.path)
 if ! [[ "$smoke_port" =~ ^[0-9]+$ ]] || [ "$smoke_port" -lt 1 ] || [ "$smoke_port" -gt 65535 ]; then
   err 14 "smoke.port must be the port the image serves HTTP on (1-65535), got '$smoke_port'"
 fi
+if ! printf '%s' "$JSON" | jq -e '(.smoke.files // {}) | type == "object" and all(to_entries[]; (.key | startswith("/")) and (.value | type == "string"))' >/dev/null; then
+  err 14 "smoke.files must map absolute paths to file contents"
+fi
 [[ "$smoke_path" == /* ]] || err 14 "smoke.path must be an HTTP path that answers 2xx when the image is healthy (starting with /), got '$smoke_path'"
 
 # rule 15: the label policy (ADR-009). The Containerfile must set every label

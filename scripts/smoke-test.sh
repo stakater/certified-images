@@ -23,6 +23,10 @@
 # requests (scripts/smoke-kind.sh), an OpenShift cluster later. On kind this
 # approximates OpenShift; it is not OpenShift.
 #
+# image.yaml's smoke block: port and path (required); env, args and files
+# (optional). files maps an absolute path to its content, for an image that
+# needs a config file to start.
+#
 # SMOKE_RUN_AS_USER  UID to run as (default 1000680000). Set it empty on
 #                    OpenShift, where the cluster assigns the UID.
 # SMOKE_TIMEOUT      seconds to wait for Ready (default 120)
@@ -60,11 +64,18 @@ automount=false
 render() {
   printf '%s' "$JSON" | jq --arg ref "$REF" --arg name "$NAME" --arg uid "$RUN_AS_USER" \
     --argjson port "$PORT" --arg path "$PATH_" --argjson automount "$automount" '
+    # smoke.files: {"/abs/path": "content"}. Each becomes a key in one ConfigMap,
+    # mounted read-only at its path.
+    ((.smoke.files // {}) | to_entries | to_entries | map({ key: "file-\(.key)", path: .value.key, content: .value.value })) as $files
+    | [ (if ($files | length) > 0 then
+        { apiVersion: "v1", kind: "ConfigMap", metadata: { name: "smoke-files" },
+          data: ($files | map({ key: .key, value: .content }) | from_entries) }
+      else empty end),
     {
       apiVersion: "v1",
       kind: "Pod",
       metadata: { name: "smoke", labels: { "app.kubernetes.io/name": $name, "stakater.com/smoke-test": "true" } },
-      spec: {
+      spec: ({
         restartPolicy: "Never",
         automountServiceAccountToken: $automount,
         securityContext: (
@@ -72,7 +83,7 @@ render() {
           + (if $uid == "" then {} else { runAsUser: ($uid | tonumber) } end)
         ),
         containers: [
-          {
+          ({
             name: "app",
             image: $ref,
             imagePullPolicy: "IfNotPresent",
@@ -89,10 +100,14 @@ render() {
               periodSeconds: 2,
               failureThreshold: 60
             }
-          }
+          } + (if ($files | length) > 0 then
+                { volumeMounts: ($files | map({ name: "smoke-files", mountPath: .path, subPath: .key, readOnly: true })) }
+              else {} end))
         ]
-      }
-    }' | "$ENGINE" run --rm -i "$YQ_IMAGE" -P -o=yaml '.'
+      } + (if ($files | length) > 0 then
+            { volumes: [ { name: "smoke-files", configMap: { name: "smoke-files" } } ] }
+          else {} end))
+    } ]' | "$ENGINE" run --rm -i "$YQ_IMAGE" -P -o=yaml '.[] | split_doc'
 }
 
 if [ -n "$RENDER" ]; then

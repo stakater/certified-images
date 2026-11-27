@@ -132,7 +132,8 @@ test-command-empty|image.yaml|s/^  command: .*/  command: []/|11
 smoke-port-not-a-number|image.yaml|s/^  port: 8080/  port: http/|14
 smoke-port-out-of-range|image.yaml|s/^  port: 8080/  port: 70000/|14
 smoke-path-relative|image.yaml|s#^  path: /healthz#  path: healthz#|14
-smoke-missing|image.yaml|/^smoke:/,/^  args:/d|14
+smoke-missing|image.yaml|/^smoke:/,/^      mode: test/d|14
+smoke-file-relative-path|image.yaml|s#^    /etc/example/config.yaml:#    etc/example/config.yaml:#|14
 tags-missing|image.yaml|/^tags:/d|15
 visibility-unknown|image.yaml|s/^consumers: \[\]/staging: {visibility: internal}/|16
 tags-not-slugs|image.yaml|s/^tags: .*/tags: ["Not A Slug"]/|15
@@ -864,6 +865,16 @@ probes the declared path|path: "?/healthz
 passes the declared environment|name: "?LOG_LEVEL
 passes the declared arguments|^ +- serve$
 never restarts on its own, so a crash is visible|restartPolicy: Never
+CASES
+# smoke.files: an image that needs a config file to start gets it mounted.
+while IFS='|' read -r name pattern; do
+  [ -z "$name" ] && continue
+  expect_pass "smoke-test: declared files $name" rendered_has "$pattern"
+done <<'CASES'
+are carried in a ConfigMap|kind: ConfigMap
+keep their content|mode: test
+are mounted at the declared path|mountPath: /etc/example/config.yaml
+are mounted read-only|readOnly: true
 CASES
 rendered_omits_uid() {
   local out
