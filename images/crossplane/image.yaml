@@ -1,0 +1,45 @@
+# One file per artifact (schema modelled on Iron Bank's hardening_manifest.yaml).
+#
+# This is Crossplane itself (the core and its RBAC manager, one image), not a
+# provider. Providers are Crossplane packages and come after it (ADR-005).
+kind: container
+name: crossplane
+displayName: Stakater build of Crossplane
+summary: "Crossplane control plane rebuilt from source on Red Hat UBI"
+description: >-
+  Crossplane is a control plane framework for Kubernetes: it installs providers and functions and reconciles the resources they define. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image.
+
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [crossplane, control-plane, infrastructure, kubernetes]
+
+upstream:
+  repo: https://github.com/crossplane/crossplane
+  # renovate: datasource=github-tags depName=crossplane/crossplane
+  version: v2.5.0
+  commit: 90f0698999e9537bc59774f1d9ba541ce112ba55   # tag must dereference to this (ADR-003)
+  license: Apache-2.0
+
+build:
+  # Hermeto prefetch input (ADR-003). Typed fetchers only. The root module
+  # replaces github.com/crossplane/crossplane/apis/v2 with ./apis.
+  prefetch: '{"type": "gomod", "path": "."}'
+
+test:
+  # Start-up test: the image must exit 0 when run with these arguments.
+  command: ["--help"]
+
+# Smoke test: Crossplane cannot be tested as one bare pod. It needs an init
+# step that installs its CRDs, and two deployments. smoke/deploy.sh installs
+# upstream's own Helm chart, from the pinned source, with this image, under
+# restricted pod security. functional/test.sh then installs a provider through
+# it and has that provider reconcile a resource.
+
+redhat:
+  # Partner Connect container component (fill after creating the component,
+  # as Red Hat-hosted: ADR-002)
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+
+# Pushed to ghcr.io/stakater/ubi/crossplane, private by default. To make it
+# public, add 'staging: {visibility: public}' in a reviewed PR (ADR-002).
+consumers:
+  - stakater-cloud-orchestrator   # ⚠️ assumed (SCO); confirm the product name
