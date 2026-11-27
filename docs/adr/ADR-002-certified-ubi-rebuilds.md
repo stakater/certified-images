@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 7, 2026-11-26. Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 8, 2026-11-27. Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -14,18 +14,25 @@ MTO needs this now. SCO needs it for many Crossplane providers and functions. Re
 ## Decision
 One repository, `stakater/certified-images`, with one pipeline that rebuilds admitted upstreams **from source** on Red Hat UBI, certifies them in Partner Connect, and publishes them with SBOM, signatures and provenance.
 
-**Two registries, two purposes.** Every build is first published to a staging registry we control, then promoted to Red Hat's:
+**Where an image lives, and where customers pull it from.** Every build that passes the checks is pushed to our registry, `ghcr.io/stakater/ubi/<name>`, signed and attested there. Customers pull certified images from Red Hat's address, `registry.connect.redhat.com/stakater/<name>`. How the image gets from one to the other depends on how its Partner Connect component was created (`docs/red-hat-distribution.md`):
 
-| Registry | Path | What it is for | Who may reference it |
+| Setup | Who stores the certified image | What the pipeline does for Red Hat | Secrets |
 |---|---|---|---|
-| GHCR (staging) | `ghcr.io/stakater/ubi/<name>` | Every build, as soon as it passes the checks. Lets products test before certification, and keeps the pipeline exercised while Red Hat's manual steps are pending | Stakater teams, in test and development. Private unless the image declares otherwise (below) |
-| Red Hat (certified) | `registry.connect.redhat.com/stakater/<name>` | The same digest, after certification | Anything shipped to a customer. A certified operator bundle must reference this one |
+| **B. Red Hat lists it, we host it** (default for new components) | Our GHCR. Red Hat's address serves it from there | Submit the GHCR image for certification | `RH_PYXIS_TOKEN` only |
+| **A. Red Hat hosts it** | Red Hat's registry | Copy the same digest to Red Hat's registry, sign it there, submit | `RH_PYXIS_TOKEN` + that component's registry key |
 
-**Staging visibility is declared per image, and private is the default.** `image.yaml` may set `staging.visibility: public`. That is a decision made in a reviewed PR, and it is only for rebuilds of permissively licensed open-source software, which anyone could build themselves. An image of Stakater's own code (ADR-006) is never public in staging. The pipeline asks the registry anonymously before and after each push and fails if a package is more open than its image declares. (Revision 5 said organisation-only for everything. The first staged package was created public, the owner chose to keep that image public, and a blanket rule would then either block it or leave nothing protecting the images that must stay private.)
+The pipeline does not declare which setup an image uses. It asks Red Hat's API for the component's record and follows it, and fails if it cannot read it.
 
-The staging path says `ubi`, not `certified`: an image there has passed our checks, not Red Hat's. The image is copied to Red Hat by digest, so what was staged and tested is byte for byte what is certified.
+**For a setup B image, GHCR is where the published image lives, not a staging area.** Three rules follow:
+- A tag that has been submitted to Red Hat is never deleted from GHCR, and its package is never made private without first giving Red Hat a read credential.
+- GHCR's availability is part of the product's availability.
+- An image on GHCR is certified only once it has been submitted and Red Hat has accepted it. Being on GHCR is not being certified, and anything shipped to a customer still names Red Hat's address.
 
-**Why from source.** Certification only requires a UBI base, so re-layering upstream's binary would pass. We build from source because it lets us fix vulnerabilities upstream has not fixed yet (rule 2), and because the SBOM and provenance then describe a build we ran, not one we trust.
+(Revisions 5 to 7 called GHCR "staging" and promoted every image to Red Hat's registry by copy. The first real submission, on 2026-11-27, showed that a component can be listed by Red Hat while staying on GHCR, with no registry key. That is now the default, because it keeps the secrets from multiplying with images.)
+
+**Visibility on GHCR is declared per image, and private is the default.** `image.yaml` may set `staging.visibility: public`. That is a decision made in a reviewed PR, and it is only for rebuilds of permissively licensed open-source software. An image of Stakater's own code (ADR-006) is never public by default. The pipeline asks the registry anonymously before and after each push and fails if a package is more open than its image declares. A private setup B image additionally needs Red Hat to hold a read credential for it.
+
+The path says `ubi`, not `certified`: an image there has passed our checks, and may or may not have been certified yet.
 
 We follow existing implementations rather than designing our own:
 
@@ -56,7 +63,7 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 
    Each deviation is recorded in `image.yaml`, offered upstream as a PR, and removed when upstream ships the fix. No other patches: no features, no behaviour changes, no backports.
 3. **Naming and versions.** "Stakater build of <Project>"; registry path `stakater/<name>` at Red Hat and `stakater/ubi/<name>` in staging. Keep upstream LICENSE/NOTICE in `/licenses`. Don't use upstream logos or marks.
-   Tags are `<upstream-version>-<release>`, e.g. `v1.121.5-3`. `release` starts at 1, goes up by one on every rebuild of the same upstream version (base-digest bump, deviation, pipeline change), and resets to 1 on an upstream bump. This is the RPM and Red Hat convention. Tags are for people; consumers still pin the digest. The staging registry is the single source of release numbers, and a release has the same tag in both registries. A release tag is never overwritten.
+   Tags are `<upstream-version>-<release>`, e.g. `v1.121.5-3`. `release` starts at 1, goes up by one on every rebuild of the same upstream version (base-digest bump, deviation, pipeline change), and resets to 1 on an upstream bump. This is the RPM and Red Hat convention. Tags are for people; consumers still pin the digest. GHCR is the single source of release numbers. A release tag is never overwritten, and one submitted to Red Hat is never deleted.
 4. **Patch SLA.** Fixable CRITICAL vulnerabilities within 7 days, fixable HIGH within 30 days; upstream minor releases within 30 days.
    - The clock starts on the day a fix is available, in UBI or in upstream, whichever applies.
    - The CVE gate (ADR-008) fails on fixable CRITICAL **and** HIGH.
@@ -66,8 +73,9 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 5. **Partner Connect.** One component per image, Red Hat Container Registry distribution. Batch new images into one export questionnaire.
    **Credentials.** We will publish many components, so credentials must not multiply with them where Red Hat allows:
    - **One Partner Connect API key for all images** (`RH_PYXIS_TOKEN`). The key belongs to a Partner Connect account; the component is chosen by the ID passed to preflight. It is created from a dedicated Stakater certification account, not a personal one, and its rotation is a documented runbook step (`docs/setup.md`).
-   - **No secret is named per image.** Red Hat gives each component its own registry login, which we cannot change, but we do not mirror that as two GitHub secrets per image: at dozens of components that is unmanageable. The username is derived from the component ID. The registry key comes from one shared secret, `RH_REGISTRY_KEYS`, a JSON object keyed by component ID. Fetching it from Red Hat's API with the shared API key was tried and is not possible (see Open questions).
-   - The repository therefore holds at most two Red Hat secrets, whatever the number of images.
+   - **New components are created as setup B**, which needs no registry credential at all.
+   - **No secret is named per image.** A setup A component has its own registry login, which Red Hat issues. Its username is derived from the component ID, and its key is held in one shared secret, `RH_REGISTRY_KEYS`, a JSON object keyed by component ID. Fetching it from Red Hat's API was tried and is not possible.
+   - The repository therefore holds one Red Hat secret if every component is setup B, and two if any is setup A.
 6. **Governance.** CODEOWNERS on `images/**` and `.github/**`: only the factory team merges to `main`, which publishes (Iron Bank model). Anyone may open a PR.
    **One exception:** Renovate automerges UBI base-digest bumps after green CI. The diff is a single digest line, and waiting for a person on each one would break the 7-day SLA. Every other change, including upstream bumps and deviations, needs a factory-team review.
 7. **No invention.** A new pattern needs a reference in `docs/references.md`, or an ADR that names the gap as a risk.
@@ -75,8 +83,10 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 
 ## Consequences
 - \+ Air gap and certification are solved once and reused across MTO, SCO and Reloader.
-- \+ Staging removes Red Hat's manual gates from the critical path: an image is usable for testing, and the outward-facing pipeline is exercised, before its component, secrets or export approval exist.
-- − A public staging image can be pulled by anyone before it is certified, and stays pullable if it later fails. Staging is for testing; nothing we tell customers points at it.
+- \+ Pushing to GHCR first removes Red Hat's manual gates from the critical path: an image is usable for testing before its component or export approval exist.
+- \+ With setup B, adding an image needs no new secret, and the signature customers can verify sits beside the very digest Red Hat lists.
+- − A public GHCR image can be pulled by anyone before it is certified, and stays pullable if it later fails.
+- − With setup B we carry the storage: if GHCR is down, or the tag is gone, Red Hat's address has nothing to serve. ⚠️ Inferred from Red Hat's record of the component (hosted: false), not yet observed with an authenticated pull.
 - − Two references to the same image invite the wrong one being shipped. The rule is simple and must be enforced in product repos: customer-facing manifests reference Red Hat's registry only.
 - \+ CVE, SBOM, signing and provenance claims become verifiable, which is a sellable sovereign-supply-chain story.
 - \+ The SLA is measurable: the gate and the scheduled re-scan cover the same severities the SLA promises.
@@ -90,6 +100,8 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 ## Open questions
 - A public staging package makes Stakater a public distributor of that software, uncertified builds included. Licence files ship in the image; whether export rules add anything is a question for legal, per image.
 - Answered 2026-11-26: the per-component registry key cannot be fetched with the API key. With a working key, `GET /projects/certification/id/<id>/secrets` returns only `docker_config_json`, empty, and the component record carries no registry credential. `RH_REGISTRY_KEYS` stays. (Probed against the Reloader component with `scripts/pyxis-probe.sh`.)
+- ⚠️ How `registry.connect.redhat.com` serves a setup B image has not been observed: whether it fetches from GHCR on each pull or keeps a copy. `docs/red-hat-distribution.md` has the two commands that settle it; they need a Red Hat login.
+- ⚠️ Whether a certified operator bundle may reference setup B images has not been tested. They are certified and listed under Red Hat's address, so it should.
 - ⚠️ The derived username format, `redhat-isv-containers+<componentId>-robot`, is from Red Hat's push instructions as remembered. The first real login confirms it.
 - ⚠️ That one API key covers every component is Red Hat's documented model and has not yet been exercised by this pipeline; the first publish of a second image confirms it.
 - ⚠️ Whether Red Hat ships a Dex image we are entitled to use as an operand (rule 1a). Check before admitting Dex.

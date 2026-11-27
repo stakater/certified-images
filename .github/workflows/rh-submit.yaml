@@ -1,11 +1,11 @@
 # Manual, OUTWARD-FACING: submits one already staged image to Red Hat for
 # certification, by running preflight with --submit against its GHCR reference.
 #
-# Why this exists: to find out, with one real submission, how a component set
-# up as "Red Hat distributes, we host the source" behaves. It needs only
-# RH_PYXIS_TOKEN: no Red Hat registry login, no push, no copy. If the image
-# then appears under registry.connect.redhat.com, this becomes the pipeline's
-# Red Hat stage. Nothing else in the pipeline is changed by running it.
+# For a component set up as "Red Hat lists it, we host it" (setup B in
+# docs/red-hat-distribution.md). It needs only RH_PYXIS_TOKEN: no Red Hat
+# registry login, no push, no copy. The publish pipeline does this itself after
+# each build; this workflow is for submitting a tag that is already on GHCR,
+# for example after adding a component ID to an image that was built earlier.
 name: rh-submit
 
 on:
@@ -96,6 +96,11 @@ jobs:
             echo
             echo "What to look for: the image and its test results, and which registry its pull command names."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Make the results readable
+        if: ${{ !cancelled() }}
+        # preflight runs in a container and writes its files as root.
+        run: sudo chown -R "$(id -u):$(id -g)" .ctx 2>/dev/null || true
 
       - name: Upload the preflight results
         if: ${{ !cancelled() }}

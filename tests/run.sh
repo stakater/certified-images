@@ -408,6 +408,27 @@ rh() { # runs a script with the stubs first on PATH and a fresh log dir
   RH_LOG="$RH/log" ENGINE=docker PATH="$RH/bin:$PATH" "$@"
 }
 
+# rh-component-info.sh: asks Red Hat how a component is distributed, so the
+# pipeline knows whether to push to Red Hat (A) or only submit from GHCR (B).
+info() { rh env RH_PYXIS_TOKEN=tok-INFOSECRET STUB_CODE="$1" STUB_BODY="$2" scripts/rh-component-info.sh "$CID"; }
+info_has() { # <code> <body> <expected line>
+  local out
+  out=$(info "$1" "$2" 2>/dev/null) || return 1
+  printf '%s\n' "$out" | grep -qx -- "$3"
+}
+B_BODY='{"container":{"hosted_registry":false,"registry":"ghcr.io","repository_namespace":"stakater","repository_name":"example","distribution_method":"rhcc"}}'
+A_BODY='{"container":{"hosted_registry":true,"registry":null,"repository_namespace":"stakater","repository_name":"example","distribution_method":"rhcc"}}'
+expect_pass "rh-component-info: a component Red Hat does not host is reported hosted=false" info_has 200 "$B_BODY" "hosted=false"
+expect_pass "rh-component-info: a Red Hat-hosted component is reported hosted=true" info_has 200 "$A_BODY" "hosted=true"
+expect_pass "rh-component-info: it reports the repository customers pull" info_has 200 "$B_BODY" "pull_repository=registry.connect.redhat.com/stakater/example"
+expect_fail "rh-component-info: an answer without the hosting flag fails, it is not guessed" "hosted_registry" info 200 '{"container":{}}'
+expect_fail "rh-component-info: a refused request fails" "401" info 401 '{"title":"Unauthorized","detail":"no"}'
+expect_fail "rh-component-info: a component distributed from our own registry is refused for now" "distribution" \
+  info 200 '{"container":{"hosted_registry":false,"distribution_method":"external","repository_namespace":"stakater","repository_name":"example"}}'
+expect_pass "rh-component-info: the API key is not passed on curl's command line" \
+  bash -c "$(declare -f rh info); RH='$RH' CID=$CID; info 200 '$B_BODY' >/dev/null 2>&1; ! grep -q INFOSECRET '$RH/log/curl.args'"
+expect_fail "rh-component-info: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/rh-component-info.sh "$CID"
+
 # pyxis-probe.sh: shows what the API returns, never the values.
 probe_out() { rh env RH_PYXIS_TOKEN=tok-PROBESECRET STUB_CODE="$1" STUB_BODY="$2" scripts/pyxis-probe.sh "$CID" 2>&1; }
 BODY='{"registry_credentials":{"username":"robot-user","password":"hunter2-SECRETVALUE"},"_id":"x"}'

@@ -42,6 +42,7 @@ status, image names or version numbers here; they go stale.
 | What an image is pinned to, and its deviations | `images/<name>/image.yaml` |
 | What is still unverified | ⚠️ marks in `docs/`, and `README.md` |
 | How the pieces fit together (diagrams) | `README.md`, "How it works" |
+| How an image reaches a customer through Red Hat | `docs/red-hat-distribution.md` |
 | What a person must set up, and the secrets | `docs/setup.md` |
 
 ## Read first
@@ -111,20 +112,24 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 ## Boundaries
 
 - **Merging to `main` publishes.** A merge that touches an image pushes it to
-  the staging registry (`ghcr.io/stakater/ubi/<name>`) and signs it. If the
-  image has a Partner Connect component ID and its secrets exist, the same
-  digest is also copied to Red Hat's registry and submitted for certification
-  (`publish.yaml`, ADR-002 rev 5). Never set a component ID without being asked.
-- **Staging is not certified.** An image on GHCR has passed our checks, not Red
-  Hat's. Never call it certified, and never put a GHCR reference in anything
-  shipped to a customer.
+  our registry (`ghcr.io/stakater/ubi/<name>`) and signs it. If the image has
+  a Partner Connect component ID, it is also submitted to Red Hat for
+  certification, which lists it publicly under Red Hat's address
+  (`publish.yaml`, ADR-002 rev 8). Never set a component ID without being asked.
+- **Being on GHCR is not being certified.** An image is certified once it has
+  been submitted and Red Hat has accepted it. Never put a GHCR reference in
+  anything shipped to a customer; customers use Red Hat's address.
+- **Never delete a tag or package from GHCR, and never make a package private.**
+  For most images Red Hat serves its address from our GHCR, so a deleted tag is
+  a broken customer install (`docs/red-hat-distribution.md`).
 - **Staging is private unless declared.** `staging.visibility: public` in
   `image.yaml` is the owner's decision, per image, and only for rebuilds of
   open-source software. Never add it without being asked, and never for an
   image of Stakater's own code (ADR-002 rev 6). Never merge, push to `main`, or trigger a
   publish without explicit authorization. Work on a feature branch and open a PR.
-- **Secrets by reference only.** There are two Red Hat secrets for the whole
-  repository: `RH_PYXIS_TOKEN` and `RH_REGISTRY_KEYS`. No secret is named per
+- **Secrets by reference only.** There is one Red Hat secret for the whole
+  repository, `RH_PYXIS_TOKEN`, plus `RH_REGISTRY_KEYS` for components Red Hat
+  hosts. No secret is named per
   image (ADR-002 rev 7); never add one. Never read, echo or inline a secret's
   value, and never print an API response without redacting it.
 - **Human steps stay human.** Creating a Partner Connect component, submitting
@@ -210,7 +215,8 @@ scripts/next-release.sh        next <version>-<release> number; list-tags.sh rea
 scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag
 scripts/copy-image.sh          promotes a digest from staging to Red Hat's registry, unchanged
 scripts/assert-visibility.sh   fails if a staging package is more open than its image declares
-scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only the publish workflow runs it
+scripts/rh-component-info.sh   asks Red Hat how a component is distributed: hosted by Red Hat, or listed from GHCR
+scripts/preflight-submit.sh    OUTWARD-FACING: submits to Red Hat; only a publishing workflow runs it
 scripts/rh-registry-login.sh   logs in to Red Hat's registry for a component: derived username, key from the shared secret
 scripts/pyxis-probe.sh         what Red Hat's API returns for a component, field names only
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
