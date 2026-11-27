@@ -72,7 +72,10 @@ redhat:
   # as Red Hat-hosted: ADR-002 rev 9)
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
 
-# Pushed to ghcr.io/stakater/ubi/dex, private by default. To make it public,
-# add 'staging: {visibility: public}' in a reviewed PR (ADR-002).
+# Visibility on GHCR (ADR-002). Public on purpose, decided by the owner on
+# 2026-11-27: a rebuild of Apache-2.0 software on UBI.
+staging:
+  visibility: public
+
 consumers:
   - multi-tenant-operator   # ⚠️ assumed from the roadmap; confirm which product deploys Dex
