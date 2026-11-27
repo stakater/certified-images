@@ -18,6 +18,12 @@ Status key: ✅ observed on 2026-11-27 with the Reloader component ·
 
 Reloader's component is **B**. OpenCost's and the MTO components are **A**.
 
+**A is the default for new components** (ADR-002 rev 9). The pipeline's setup A
+path ran for the first time on 2026-11-27, with OpenCost: it logged in, copied
+the GHCR digest to Red Hat's registry unchanged, signed it there and submitted
+it. ⚠️ OpenCost is not published yet (export approval pending), so a pull of a
+pipeline-published setup A image from Red Hat's address has not been seen.
+
 ## The short answers
 
 **Does a customer always pull from `registry.connect.redhat.com` in setup B?**

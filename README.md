@@ -30,15 +30,16 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | Release numbering, push, promotion by digest | Rehearsed on every PR against a throwaway local registry |
 | **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Works. First run 2026-11-26. Provenance verified from outside CI with `gh attestation verify`; the `cosign verify` commands have not been run yet |
 | **Red Hat, when Red Hat lists and we host** (setup B): submit the GHCR image | Submission and certification work (first on 2026-11-27). ❌ The certified image is not yet pullable from Red Hat's address, so the route is **not proven end to end** |
-| **Red Hat, when Red Hat hosts** (setup A): login, copy by digest, signing, submit | Written, **never run**. Needs the component's registry key |
+| **Red Hat, when Red Hat hosts** (setup A): login, copy by digest, signing, submit | Works. First run 2026-11-27 with OpenCost: logged in, copied the same digest, signed, submitted. Publication waits on Red Hat's export approval, so a pull from Red Hat's address is **not yet seen** |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
 Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration | `registry.connect.redhat.com/stakater/opencost`. Red Hat-hosted component `6b07595f3ecfc52e21d75e12` set; published once its registry key is in `RH_REGISTRY_KEYS` |
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration | Submitted 2026-11-27: `v1.121.5-6` is on Red Hat's registry, signed, certification in progress. Not published until export approval; then `registry.connect.redhat.com/stakater/opencost` |
 | `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and listed** in Red Hat's catalog: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ❌ **Not pullable from that address yet**: Red Hat's registry answers "unauthorized" with a valid login ([details](docs/red-hat-distribution.md)) |
+| `dex` | dexidp/dex | See its PR | `ghcr.io/stakater/ubi/dex`, private by default, not pushed yet | No component yet |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 
@@ -367,7 +368,7 @@ Checked by running it (2026-11-25):
 Still unverified:
 - [ ] **That an image works on OpenShift itself.** The smoke test runs on a local Kubernetes cluster with restricted pod security, which approximates OpenShift's `restricted-v2`. It does not exercise OpenShift's SCC admission, its UID ranges, SELinux or FIPS mode. Level 2 of story P.2b runs the same test on a real OpenShift cluster.
 - [ ] That OpenCost does its job. It has no functional test: producing cost data needs real metrics, which is story P.3. Reloader has one (a ConfigMap change rolls the workload, an unrelated one does not), so far run only on a local cluster, not on OpenShift.
-- [ ] The Red Hat stage: registry login, copy by digest, `preflight --submit`. Written and linted, never run.
+- [ ] That a Red Hat-hosted image pulls from `registry.connect.redhat.com` once published. The pipeline's part ran on 2026-11-27 (login, copy by digest, signing, submission); publication waits on export approval.
 - [ ] `cosign verify` and `cosign verify-attestation` against a staged image from outside CI. Signing ran in CI without error; only `gh attestation verify` has been run from outside.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
 - [ ] Renovate keeps current: the UBI and toolchain digests, the upstream tag and commit (in `image.yaml` and the Containerfile together), and the tool images in `tools.env`. The config validates, but the Renovate app has not run on this repo.
