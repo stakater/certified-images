@@ -1,0 +1,151 @@
+# Daily: scan the newest published release of every image, keep one issue per
+# image for what is found, and open a pull request with the fix when it can be
+# prepared automatically (stories V.1 and V.2, ADR-002 rule 4).
+#
+# It never merges anything. A person reviews the pull request (ADR-002 rule 6).
+#
+# For the pull request to be opened, the repository setting "Allow GitHub
+# Actions to create and approve pull requests" must be on. Without it the fix
+# branch is still pushed and the issue says so.
+name: rescan
+
+on:
+  schedule:
+    - cron: "17 5 * * *" # 05:17 UTC every day
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image name to scan (leave empty for all)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# bash, named explicitly, runs with pipefail. The default shell does not, and
+# then a failure on the left of a pipe is silently ignored.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  list:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      dirs: ${{ steps.list.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: List images
+        id: list
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          if [ -n "$IMAGE" ]; then
+            if ! [[ "$IMAGE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || [ ! -f "images/$IMAGE/image.yaml" ]; then
+              echo "::error::No such image: $IMAGE"
+              exit 1
+            fi
+            dirs=$(jq -cn --arg d "images/$IMAGE" '[$d]')
+          else
+            dirs=$(find images -mindepth 2 -maxdepth 2 -name image.yaml -exec dirname {} \; | sort |
+              grep -E '^images/[a-z0-9]([a-z0-9-]*[a-z0-9])?$' | jq -R . | jq -cs .)
+          fi
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: list
+    if: ${{ needs.list.outputs.dirs != '[]' }}
+    name: ${{ matrix.dir }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.list.outputs.dirs) }}
+    permissions:
+      contents: write # push the fix branch
+      issues: write # one issue per image
+      pull-requests: write # open the fix pull request
+      actions: write # start verify and images on the fix branch
+      packages: read # scan a private image
+    env:
+      IMAGE_DIR: ${{ matrix.dir }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan the newest published release
+        id: scan
+        run: scripts/rescan-image.sh "$IMAGE_DIR" "$RUNNER_TEMP/rescan" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Report (one issue per image)
+        if: ${{ steps.scan.outputs.published == 'true' }}
+        env:
+          TAG: ${{ steps.scan.outputs.tag }}
+        run: scripts/report-findings.sh "$(basename "$IMAGE_DIR")" "$TAG" "$RUNNER_TEMP/rescan/findings.jsonl"
+
+      - name: Prepare the fix
+        id: fix
+        if: ${{ steps.scan.outputs.published == 'true' && steps.scan.outputs.findings != '0' }}
+        run: |
+          scripts/auto-fix.sh "$IMAGE_DIR" "$RUNNER_TEMP/rescan/findings.jsonl" | tee "$RUNNER_TEMP/fix.txt"
+          if [ -n "$(git status --porcelain -- images)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No automatic fix::$IMAGE_DIR has findings that could not be fixed automatically. See its issue."
+          fi
+
+      - name: Push the fix and open a pull request
+        if: ${{ steps.fix.outputs.changed == 'true' }}
+        env:
+          TAG: ${{ steps.scan.outputs.tag }}
+        run: |
+          name=$(basename "$IMAGE_DIR")
+          branch="auto/fix-$name"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b "$branch"
+          git add -- images
+          git commit -q -m "$name: fix vulnerabilities found by the re-scan of $TAG
+
+          $(cat "$RUNNER_TEMP/fix.txt")
+
+          Prepared by scripts/auto-fix.sh. Not reviewed by a person yet."
+          # The branch belongs to this workflow: it is rebuilt from main each run.
+          git push -q --force origin "HEAD:refs/heads/$branch"
+
+          {
+            echo "The daily re-scan of \`$name:$TAG\` found fixable CRITICAL or HIGH vulnerabilities. This is the fix it could prepare:"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/fix.txt"
+            echo '```'
+            echo
+            echo "- A base bump changes one digest line in the Containerfile."
+            echo "- A dependency bump regenerates \`patches/0001-bump-vulnerable-go-modules.patch\` from upstream's pristine source and records it under \`deviations\` in \`image.yaml\`. It touches \`go.mod\` and \`go.sum\` only."
+            echo
+            echo "The \`verify\` and \`images\` workflows were started on this branch; they build the patched image and run its smoke and functional tests. **Review before merging: a merge publishes.**"
+          } > "$RUNNER_TEMP/pr.md"
+
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')" ]; then
+            gh pr create --head "$branch" --base main \
+              --title "$name: fix vulnerabilities found by the re-scan" \
+              --body-file "$RUNNER_TEMP/pr.md" ||
+              echo "::warning title=Pull request not opened::Branch $branch is pushed, but the pull request could not be opened. Is 'Allow GitHub Actions to create and approve pull requests' enabled?"
+          fi
+
+          # A push by this workflow's token does not start pull-request
+          # workflows, so start the checks on the branch explicitly.
+          gh workflow run verify --ref "$branch" || true
+          gh workflow run images --ref "$branch" || true

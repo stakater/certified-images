@@ -883,6 +883,117 @@ rendered_omits_uid() {
 }
 expect_pass "smoke-test: on OpenShift the UID is left for the cluster to assign" rendered_omits_uid
 
+# ------------------------------------------------- re-scan and automatic fix
+RS="$FIX/rescan"
+RT="$TMP/rescan"
+mkdir -p "$RT/bin"
+
+# latest-release.sh: the newest published release of a version
+latest() { # <version> <expected> <tags...>
+  local version=$1 expected=$2 got
+  shift 2
+  got=$(printf '%s\n' "$@" | scripts/latest-release.sh "$version") || return 1
+  [ "$got" = "$expected" ] || {
+    echo "expected '$expected', got '$got'"
+    return 1
+  }
+}
+expect_pass "latest-release: the highest release of the version" latest v1.2.3 v1.2.3-10 v1.2.3-2 v1.2.3-10 v1.2.3-9
+expect_pass "latest-release: other versions and signature tags are ignored" \
+  latest v1.2.3 v1.2.3-2 v1.2.4-7 v1.2.3-2 sha256-abc v1.2.3-rc1 latest
+expect_pass "latest-release: nothing published prints nothing" latest v1.2.3 "" v1.2.2-1 ""
+
+# scan-findings.sh: trivy's report as one line per finding
+findings() { scripts/scan-findings.sh "$1"; }
+finding_is() { findings "$RS/trivy.json" | jq -ec "select(.id == \"$1\") | $2" >/dev/null; }
+expect_pass "scan-findings: every finding becomes a line" \
+  bash -c "[ \"\$(scripts/scan-findings.sh '$RS/trivy.json' | wc -l | tr -d ' ')\" = 5 ]"
+expect_pass "scan-findings: a UBI package is class os" finding_is CVE-2026-0001 '.class == "os" and .pkg == "openssl-libs" and .severity == "HIGH"'
+expect_pass "scan-findings: a Go module is class gomod" finding_is CVE-2026-0002 '.class == "gomod" and .installed == "v0.59.0" and .fixed == "0.60.0"'
+expect_pass "scan-findings: Go itself is class stdlib" finding_is CVE-2026-0005 '.class == "stdlib"'
+expect_pass "scan-findings: a clean report gives nothing" bash -c "[ -z \"\$(scripts/scan-findings.sh '$RS/trivy-clean.json')\" ]"
+expect_fail "scan-findings: a file that is not a trivy report fails" "" bash -c "echo '{}' > '$RT/bad.json'; scripts/scan-findings.sh '$RT/bad.json'"
+
+# fix-targets.sh: which Go modules to bump, and to what
+scripts/scan-findings.sh "$RS/trivy.json" >"$RT/findings.jsonl" 2>/dev/null
+targets() { scripts/fix-targets.sh "$RT/findings.jsonl" | tr '\n' ' '; }
+expect_pass "fix-targets: one line per module, at its highest fixed version" \
+  bash -c "[ \"\$(scripts/fix-targets.sh '$RT/findings.jsonl' | tr '\n' ' ')\" = 'github.com/go-jose/go-jose/v4@v4.1.6 golang.org/x/net@v0.62.0 ' ]"
+expect_pass "fix-targets: a fix in another major version is not chosen" \
+  bash -c "! scripts/fix-targets.sh '$RT/findings.jsonl' | grep -q 'v5\.'"
+expect_pass "fix-targets: OS packages and Go itself are not module targets" \
+  bash -c "! scripts/fix-targets.sh '$RT/findings.jsonl' | grep -qE 'openssl|stdlib'"
+
+# report-findings.sh: one issue per image, against a stub gh
+cat >"$RT/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GH_LOG"
+case "$1 $2" in
+  "issue list") printf '%s' "$STUB_OPEN_ISSUE" ;;
+  "issue create") echo "https://github.com/x/y/issues/7" ;;
+esac
+exit 0
+STUB
+chmod +x "$RT/bin/gh"
+report() { # <open issue number or empty> <findings file>
+  : >"$RT/gh.log"
+  GH_LOG="$RT/gh.log" STUB_OPEN_ISSUE=$1 PATH="$RT/bin:$PATH" \
+    scripts/report-findings.sh example v1.2.3-4 "$2" >/dev/null 2>&1
+}
+gh_did() { grep -q -- "$1" "$RT/gh.log"; }
+: >"$RT/none.jsonl"
+report "" "$RT/findings.jsonl"
+expect_pass "report-findings: findings and no open issue: opens one" gh_did "^issue create"
+expect_pass "report-findings: the issue is labelled so it can be found again" gh_did "vulnerability"
+report 7 "$RT/findings.jsonl"
+expect_pass "report-findings: findings and an open issue: updates it" gh_did "^issue edit 7"
+expect_pass "report-findings: and does not open a second one" bash -c "! grep -q '^issue create' '$RT/gh.log'"
+report 7 "$RT/none.jsonl"
+expect_pass "report-findings: no findings and an open issue: closes it" gh_did "^issue close 7"
+report "" "$RT/none.jsonl"
+expect_pass "report-findings: no findings and no issue: does nothing" \
+  bash -c "! grep -qE '^issue (create|edit|close)' '$RT/gh.log'"
+
+# bump-base.sh: the UBI base digest, against a stub engine that reports NEW
+OLD_D=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+NEW_D=sha256:9999999999999999999999999999999999999999999999999999999999999999
+bump() { # <digest the registry reports>
+  local dir="$RT/bump/image-good"
+  rm -rf "${RT:?}/bump" && mkdir -p "$dir" && cp "$FIX/image-good/Containerfile" "$dir/"
+  STUB_OUT=$1 STUB_RC=0 ENGINE="$STUB_ENGINE" REGISTRY_AUTH_FILE=/nonexistent scripts/bump-base.sh "$dir"
+}
+expect_pass "bump-base: a newer base digest is written into the Containerfile" \
+  bash -c "$(declare -f bump); RT='$RT' FIX='$FIX' STUB_ENGINE='$STUB_ENGINE'; bump '$NEW_D' >/dev/null && grep -q '^ARG BASE_TAG=latest@$NEW_D\$' '$RT/bump/image-good/Containerfile'"
+expect_pass "bump-base: it says the base changed" bash -c "$(declare -f bump); RT='$RT' FIX='$FIX' STUB_ENGINE='$STUB_ENGINE'; bump '$NEW_D' | grep -q 'changed=true'"
+expect_pass "bump-base: an unchanged digest changes nothing" bash -c "$(declare -f bump); RT='$RT' FIX='$FIX' STUB_ENGINE='$STUB_ENGINE'; bump '$OLD_D' | grep -q 'changed=false'"
+expect_fail "bump-base: an answer that is not a digest fails" "digest" bash -c "$(declare -f bump); RT='$RT' FIX='$FIX' STUB_ENGINE='$STUB_ENGINE'; bump 'oops'"
+
+# update-deviations.sh: record the regenerated dependency patch in image.yaml
+dev_image() {
+  local dir="$RT/dev/image-good"
+  rm -rf "${RT:?}/dev" && mkdir -p "$dir" && cp "$FIX/image-good/image.yaml" "$dir/"
+  [ -z "${1:-}" ] || printf '%s\n' "$1" >>"$dir/image.yaml"
+  echo "$dir"
+}
+dev_json() { scripts/yaml-to-json.sh "$1/image.yaml"; }
+d=$(dev_image)
+expect_pass "update-deviations: adds a deviation with the fixed IDs and the bumps" bash -c "
+  scripts/update-deviations.sh '$d' 'CVE-2026-0002 CVE-2026-0003' 'golang.org/x/net v0.59.0 -> v0.62.0' >/dev/null &&
+  scripts/yaml-to-json.sh '$d/image.yaml' | jq -e '.deviations | length == 1 and .[0].patch == \"patches/0001-bump-vulnerable-go-modules.patch\" and (.[0].fixes | sort) == [\"CVE-2026-0002\",\"CVE-2026-0003\"] and .[0].bumps == [\"golang.org/x/net v0.59.0 -> v0.62.0\"] and (.[0].reason | length) > 0' >/dev/null"
+expect_pass "update-deviations: the rest of image.yaml is untouched" bash -c "
+  scripts/yaml-to-json.sh '$d/image.yaml' | jq -e '.name == \"image-good\" and .upstream.version == \"v1.2.3\" and .smoke.port == 8080' >/dev/null && grep -q '# renovate: datasource=github-tags' '$d/image.yaml'"
+expect_pass "update-deviations: the result still passes the image rules (with the patch present)" bash -c "
+  cp '$FIX/image-good/Containerfile' '$d/' && mkdir -p '$d/patches' && : > '$d/patches/0001-bump-vulnerable-go-modules.patch' && scripts/check-image.sh '$d' >/dev/null"
+d=$(dev_image 'deviations:
+  - patch: patches/0001-bump-vulnerable-go-modules.patch
+    reason: earlier
+    fixes: [CVE-2026-0001]
+    bumps: ["example.com/old v1 -> v2"]
+    upstreamPR: https://example.com/pr/1')
+expect_pass "update-deviations: an existing entry keeps its fixed IDs and its upstream PR" bash -c "
+  scripts/update-deviations.sh '$d' 'CVE-2026-0002' 'golang.org/x/net v0.59.0 -> v0.62.0' >/dev/null &&
+  scripts/yaml-to-json.sh '$d/image.yaml' | jq -e '.deviations | length == 1 and (.[0].fixes | sort) == [\"CVE-2026-0001\",\"CVE-2026-0002\"] and .[0].upstreamPR == \"https://example.com/pr/1\" and .[0].bumps == [\"golang.org/x/net v0.59.0 -> v0.62.0\"]' >/dev/null"
+
 # ---------------------------------------------------------- functional tests
 # A stub kubectl plays a cluster where the pod is admitted, Ready and serving,
 # so what is tested here is only whether the image's own functional test is

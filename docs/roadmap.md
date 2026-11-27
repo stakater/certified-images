@@ -135,7 +135,7 @@ pushing it to Red Hat's registry, so that adding an image adds no secret.*
   customer is not proven. Cause unknown. This story is 🔨, not ✅, until that
   pull works.
 
-**Story V.1 — published images are re-scanned every day** 🔨 *(approved 2026-11-27; planning: [v1-rescan-and-autofix](planning/v1-rescan-and-autofix.md))*
+**Story V.1 — published images are re-scanned every day** 🔨 *(built; first scheduled run pending)* *(approved 2026-11-27; planning: [v1-rescan-and-autofix](planning/v1-rescan-and-autofix.md))*
 *As the factory team, I want every published image scanned daily and one issue
 per image when something fixable appears, so that we know the day a
 vulnerability is published, and the SLA clock is visible.*

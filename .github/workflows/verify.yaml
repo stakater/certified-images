@@ -3,6 +3,8 @@
 name: verify
 
 on:
+  # Manual start: the re-scan workflow starts this on the fix branches it pushes.
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]

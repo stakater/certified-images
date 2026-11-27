@@ -78,6 +78,7 @@ through a normal PR. A change to the pipeline, the rules or an ADR needs a story
 |---|---|---|
 | `/add-image` | Adding a new upstream project to the factory | `.claude/skills/add-image/SKILL.md` |
 | `/fix-cve` | The CVE gate or the re-scan reports a vulnerability in an image | `.claude/skills/fix-cve/SKILL.md` |
+| Daily re-scan | Scans the newest published release of every image, keeps one issue per image, and opens a fix pull request on branch `auto/fix-<image>`. It never merges | `.github/workflows/rescan.yaml`, `scripts/auto-fix.sh` |
 | Verify hook | Runs `make verify` after every edit to a checked file, so an unverified change cannot be called done | `.claude/settings.json`, `scripts/verify-hook.sh` |
 
 If the hook reports a failure, fix it before doing anything else. Do not edit
@@ -135,6 +136,9 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 - **Human steps stay human.** Creating a Partner Connect component, submitting
   an export questionnaire, adding repository secrets, and opening a PR on an
   upstream project are done by a person. Say what is needed; do not attempt them.
+- **Branches named `auto/fix-*` belong to the re-scan workflow.** It rebuilds
+  them from `main` and force-pushes. Do not commit to them; review their pull
+  request, and merge or close it.
 - **Do not weaken a check to get a green run.** A failing gate is information.
   Fix the cause, or record an exception the way ADR-008 describes.
 
@@ -221,6 +225,9 @@ scripts/rh-registry-login.sh   logs in to Red Hat's registry for a component: de
 scripts/pyxis-probe.sh         what Red Hat's API returns for a component, field names only
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched
+scripts/rescan-image.sh        scans the newest published release; scan-findings.sh and latest-release.sh support it
+scripts/report-findings.sh     one GitHub issue per image for its open findings
+scripts/auto-fix.sh            prepares the fix: bump-base.sh for UBI packages, fix-go-deps.sh + update-deviations.sh for Go modules
 scripts/lib.sh, tools.env      shared: container engine, and every tool image pinned by digest
 Makefile                       make verify (repo checks), make image (one image)
 tests/run.sh, tests/fixtures/  tests for the scripts and the checks
