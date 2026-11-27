@@ -204,6 +204,7 @@ images/<name>/Containerfile    hermetic build stage + parameterised, digest-pinn
 images/<name>/patches/*.patch  optional dependency-only patches, each listed under deviations
 images/<name>/vex.openvex.json optional CVE exceptions
 images/<name>/smoke/*.yaml     optional fixtures the smoke test deploys first (RBAC, a stub dependency)
+images/<name>/smoke/deploy.sh  optional: the image deploys itself for the smoke test (it needs an init step or its own chart); cleanup.sh undoes it
 images/<name>/functional/test.sh optional test of what the image does; gets TEST_NAMESPACE, TEST_POD, TEST_IMAGE, TEST_TIMEOUT
 scripts/new-image.sh           scaffolds images/<name>/ from scripts/templates/
 scripts/check-image.sh         our own rules for one image directory

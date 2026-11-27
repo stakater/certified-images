@@ -1038,6 +1038,41 @@ expect_pass "functional: the test is given the namespace, pod, image and timeout
 d=$(ft_image notexec 'exit 0') && chmod -x "$d/functional/test.sh"
 expect_fail "functional: a test that is not executable fails, it is not skipped" "not executable" smoke "$d"
 
+# smoke/deploy.sh: an image that cannot be tested as one bare pod (it needs an
+# init step, or its own chart) deploys itself. The smoke test then skips its
+# generic pod and trusts the script's exit status.
+# ft_deploy <case> <deploy.sh body> [functional body]
+ft_deploy() {
+  local dir
+  dir=$(ft_image "$1" "${3:-}")
+  mkdir -p "$dir/smoke"
+  printf '#!/usr/bin/env bash\n%s\n' "$2" >"$dir/smoke/deploy.sh"
+  chmod +x "$dir/smoke/deploy.sh"
+  echo "$dir"
+}
+d=$(ft_deploy deploy-ok 'echo "deployed with its own chart"; exit 0')
+expect_pass "smoke deploy: an image with smoke/deploy.sh is deployed by it" \
+  bash -c "$(declare -f smoke); FT='$FT'; smoke '$d' 2>&1 | grep -q 'deployed with its own chart'"
+expect_pass "smoke deploy: the generic pod is not created" \
+  bash -c "$(declare -f smoke); FT='$FT'; ! smoke '$d' 2>&1 | grep -q 'pod admitted'"
+d=$(ft_deploy deploy-fails 'echo "the chart did not come up" >&2; exit 1')
+expect_fail "smoke deploy: a failing deploy fails the smoke test" "deploy.sh failed" smoke "$d"
+# shellcheck disable=SC2016 # the variables are for the generated script
+d=$(ft_deploy deploy-env '[ -n "$TEST_NAMESPACE" ] && [ "$TEST_IMAGE" = registry.example/img@sha256:abc ] && [ -n "$TEST_TIMEOUT" ] && [ -n "$TEST_RUN_AS_USER" ]')
+expect_pass "smoke deploy: the script is given the namespace, image, timeout and UID" smoke "$d"
+d=$(ft_deploy deploy-then-functional 'exit 0' 'echo "functional test ran"; exit 1')
+expect_fail "smoke deploy: the functional test still runs afterwards and decides" "functional test failed" smoke "$d"
+d=$(ft_deploy deploy-notexec 'exit 0') && chmod -x "$d/smoke/deploy.sh"
+expect_fail "smoke deploy: a deploy.sh that is not executable fails, it is not skipped" "not executable" smoke "$d"
+d=$(ft_deploy deploy-cleanup 'exit 0') && printf '#!/usr/bin/env bash\necho cleaned > "%s/cleanup-ran"\n' "$FT" >"$d/smoke/cleanup.sh" && chmod +x "$d/smoke/cleanup.sh" && rm -f "$FT/cleanup-ran"
+expect_pass "smoke deploy: smoke/cleanup.sh runs afterwards" bash -c "$(declare -f smoke); FT='$FT'; smoke '$d' >/dev/null 2>&1; [ -f '$FT/cleanup-ran' ]"
+
+# rule 14 with a deploy script: port and path are not needed
+dir=$(mutate smoke-deploy-no-port image.yaml '/^smoke:/,/^      mode: test/d') && mkdir -p "$dir/smoke" && printf '#!/usr/bin/env bash\n' >"$dir/smoke/deploy.sh" && chmod +x "$dir/smoke/deploy.sh"
+expect_pass "check-image: with smoke/deploy.sh, smoke.port and smoke.path are not required" scripts/check-image.sh "$dir"
+dir=$(mutate smoke-deploy-notexec image.yaml '/^smoke:/,/^      mode: test/d') && mkdir -p "$dir/smoke" && printf '#!/usr/bin/env bash\n' >"$dir/smoke/deploy.sh"
+expect_fail "check-image: a smoke/deploy.sh that is not executable fails rule 14" "rule 14:" scripts/check-image.sh "$dir"
+
 # rule 17
 dir=$(mutate functional-no-test image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && touch "$dir/functional/notes.txt"
 expect_fail "check-image: functional/ without test.sh fails rule 17" "rule 17:" scripts/check-image.sh "$dir"
