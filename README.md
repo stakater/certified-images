@@ -39,6 +39,8 @@ Images:
 | `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
 | `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | `registry.connect.redhat.com/stakater/reloader-operator`. Component `6af9776fa950dc6dbfa4d693` set; not published: its registry key is not in `RH_REGISTRY_KEYS` yet |
 
+For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
+
 ### Two registries
 
 | Registry | What it holds | Who uses it |
