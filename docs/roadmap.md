@@ -135,6 +135,22 @@ pushing it to Red Hat's registry, so that adding an image adds no secret.*
   customer is not proven. Cause unknown. This story is 🔨, not ✅, until that
   pull works.
 
+**Story V.1 — published images are re-scanned every day** 🔨 *(approved 2026-11-27; planning: [v1-rescan-and-autofix](planning/v1-rescan-and-autofix.md))*
+*As the factory team, I want every published image scanned daily and one issue
+per image when something fixable appears, so that we know the day a
+vulnerability is published, and the SLA clock is visible.*
+- **Done:** a daily workflow scans the newest published release of each image
+  with the build's own gate and VEX file; a finding opens or updates one issue
+  per image; no findings closes it.
+
+**Story V.2 — the fix arrives as a pull request** 🔨 *(approved 2026-11-27; same planning doc)*
+*As the factory team, I want the fix for a finding prepared automatically and
+built, so that a person only has to review it.*
+- **Done:** for a UBI package the base digest is bumped; for a Go module the
+  image's dependency patch is regenerated with the fixed version and its
+  deviation recorded; the change is pushed as a pull request and built with the
+  smoke and functional tests. It is never merged automatically.
+
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
 mirror, so that showback works without internet access.*
@@ -145,7 +161,11 @@ mirror, so that showback works without internet access.*
 
 ## Backlog (one line each, all 📝 Draft)
 
-- Scheduled daily re-scan of published digests (ADR-002 rule 4) and the first outer audit (method.md).
+- The first outer audit (method.md), once the daily re-scan has run for a while.
+- Automatic merge of dependency-only fixes whose tests pass (needs an ADR-002 revision).
+- Go standard-library findings: bump the toolchain automatically.
+- Reachability analysis, so findings in code that is never called become VEX statements with evidence.
+- A public page of the patch SLA per image.
 - Offer OpenCost's dependency bump upstream and record the PR link in `image.yaml` (ADR-002 rule 2).
 - Make the pipeline callable from another repository (ADR-006), then move Reloader's build to the Reloader repository.
 - Split the pipeline into build-and-stage, test-on-OpenShift, promote-to-Red-Hat, once the OpenShift runner exists (P.2b level 2).
