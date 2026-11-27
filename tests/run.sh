@@ -461,9 +461,11 @@ expect_pass "pyxis-probe: fields that hold nothing are still listed" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '{\"registry_credentials\":{},\"docker_config_json\":null}' | grep -q 'registry_credentials  (object, empty)'"
 # A few settings describe the component and are not secrets. Their values help
 # check it was created correctly. Everything else stays names-only.
-SETTINGS='{"name":"Reloader (operator) container","certification_status":"In Progress","container":{"repository_namespace":"stakater","repository_name":"reloader","os_content_type":"Red Hat Universal Base Image (UBI)","distribution_method":"rhcc","password":"hunter2-SECRETVALUE"},"contacts":[{"email_address":"person@example.com"}]}'
+SETTINGS='{"name":"Reloader (operator) container","certification_status":"In Progress","container":{"repository_namespace":"stakater","repository_name":"reloader","repository":"stakater/ubi/reloader","os_content_type":"Red Hat Universal Base Image (UBI)","distribution_method":"rhcc","password":"hunter2-SECRETVALUE"},"contacts":[{"email_address":"person@example.com"}]}'
 expect_pass "pyxis-probe: shows the component's non-secret settings" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$SETTINGS' | grep -q 'container.repository_name = reloader'"
+expect_pass "pyxis-probe: shows where Red Hat thinks the image lives" \
+  bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; probe_out 200 '$SETTINGS' | grep -q 'container.repository = stakater/ubi/reloader'"
 expect_pass "pyxis-probe: shows nothing outside that short list" \
   bash -c "$(declare -f rh probe_out); RH='$RH' CID=$CID; ! probe_out 200 '$SETTINGS' | grep -qE 'SECRETVALUE|person@example.com'"
 expect_fail "pyxis-probe: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/pyxis-probe.sh "$CID"
