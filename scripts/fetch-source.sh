@@ -60,8 +60,12 @@ allowed() {
     *) return 1 ;;
   esac
 }
+# SKIP_PATCHES=1 gives upstream's pristine source: scripts/fix-go-deps.sh
+# regenerates the dependency patch from it.
 shopt -s nullglob
-for patch in "$DIR"/patches/*.patch; do
+patches=("$DIR"/patches/*.patch)
+[ -z "${SKIP_PATCHES:-}" ] || patches=()
+for patch in ${patches[@]+"${patches[@]}"}; do
   files=$(git -C "$OUT" apply --numstat "$(cd "$(dirname "$patch")" && pwd)/$(basename "$patch")" | cut -f3) ||
     die "patch $patch does not apply to $VERSION"
   while IFS= read -r f; do

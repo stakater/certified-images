@@ -93,6 +93,13 @@ Then read its first "Dependency Dashboard" issue and check that it lists:
 from the dashboard, a regex manager in `renovate.json` does not match; open an
 issue with what is missing.
 
+## 2a. Let the re-scan open pull requests
+
+Settings → Actions → General → Workflow permissions → tick **"Allow GitHub
+Actions to create and approve pull requests"**. Without it the daily re-scan
+still opens its issue and pushes the fix branch `auto/fix-<image>`, but cannot
+open the pull request, and says so in the run.
+
 ## 3. Protect `main`
 
 In Settings → Branches (or Rulesets), for `main`:

@@ -9,6 +9,12 @@ Read `CLAUDE.md` first if you have not. The patch SLA is in ADR-002 rule 4:
 fixable CRITICAL within 7 days, fixable HIGH within 30 days, counted from the
 day a fix is available.
 
+**Check first whether the re-scan already prepared the fix.** It opens a pull
+request from branch `auto/fix-<image>` for UBI-package and Go-module findings,
+and an issue titled "Vulnerabilities in <image>" either way. If that pull
+request exists, review it instead of redoing the work. To produce the same fix
+by hand: `scripts/auto-fix.sh images/<name> <findings.jsonl>`.
+
 Start from the scan report: `.ctx/<name>/evidence/trivy.txt` locally, or the
 `evidence-<name>` artifact of the CI run. For each finding, note the package,
 the installed version, the fixed version, and whether it is an OS package

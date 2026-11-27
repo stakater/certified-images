@@ -31,6 +31,7 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | **Staging to GHCR**: push, cosign signature, SBOM attestations, provenance | Works. First run 2026-11-26. Provenance verified from outside CI with `gh attestation verify`; the `cosign verify` commands have not been run yet |
 | **Red Hat, when Red Hat lists and we host** (setup B): submit the GHCR image | Submission and certification work (first on 2026-11-27). ❌ The certified image is not yet pullable from Red Hat's address, so the route is **not proven end to end** |
 | **Red Hat, when Red Hat hosts** (setup A): login, copy by digest, signing, submit | Works. First run 2026-11-27 with OpenCost: logged in, copied the same digest, signed, submitted. Publication waits on Red Hat's export approval, so a pull from Red Hat's address is **not yet seen** |
+| **Daily re-scan** of published images, one issue per image, automatic fix pull request | Built. The re-scan was run by hand against the three published images (no findings). The scheduled run, the issue and the automatic pull request have **not run yet** |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
 Images:
@@ -195,6 +196,38 @@ sequenceDiagram
   end
 ```
 
+### Staying on top of vulnerabilities
+
+Every day `rescan.yaml` looks at what is actually published, not at what was true when it was built:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant RS as rescan workflow (daily)
+  participant GH as GHCR
+  participant DB as Vulnerability database
+  participant IS as GitHub issue
+  participant PR as Fix pull request
+  participant CI as Pipeline
+  actor Team as Factory team
+
+  RS->>GH: Newest published release of each image
+  RS->>DB: Scan it, fixable CRITICAL and HIGH, VEX applied
+  alt nothing found
+    RS->>IS: Close the image's issue if one is open
+  else something found
+    RS->>IS: Open or update one issue for the image. Its date starts the SLA clock
+    RS->>RS: auto-fix.sh. UBI package: bump the base digest. Go module: regenerate the dependency patch
+    RS->>PR: Push branch auto/fix-NAME, open the pull request
+    RS->>CI: Start verify and images on that branch
+    CI-->>PR: Patched image builds, smoke and functional tests
+    Team->>PR: Review and merge
+    PR->>CI: Merge publishes the fixed release
+  end
+```
+
+Nobody learns of a vulnerability before it is disclosed. What this buys is the time from disclosure to a tested fix waiting for review: hours, not whenever someone next rebuilds. It does not merge. Go standard-library findings are reported but not fixed automatically yet.
+
 ### How an image stays current
 
 ```mermaid
@@ -230,7 +263,7 @@ sequenceDiagram
   CI->>RH: Same version, next release number
 ```
 
-⚠️ Renovate and the automerge have not run on this repository yet; the last diagram shows the design. A scheduled re-scan of already published images is planned and not built (ADR-002 rule 4).
+⚠️ Renovate and the automerge have not run on this repository yet; the last diagram shows the design.
 
 ## Layout
 ```
@@ -250,6 +283,7 @@ tests/                          # tests for the scripts and the checks
 .github/workflows/images.yaml         # calls it for every image on pull requests (read-only)
 .github/workflows/publish.yaml        # calls it with publish=true on merges to main: stage to GHCR, then Red Hat when ready
 .github/workflows/verify.yaml         # make verify on pull requests
+.github/workflows/rescan.yaml         # daily: scan published images, keep an issue per image, open a fix pull request
 .github/workflows/pyxis-probe.yaml    # manual: what Red Hat's API returns for a component, names only
 .github/workflows/rh-submit.yaml      # manual, OUTWARD-FACING: submit a tag already on GHCR to Red Hat (setup B)
 renovate.json                   # upstream tag+commit, UBI digest, toolchain digest, tool images
