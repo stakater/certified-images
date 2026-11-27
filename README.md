@@ -245,6 +245,7 @@ tests/                          # tests for the scripts and the checks
 .github/workflows/publish.yaml        # calls it with publish=true on merges to main: stage to GHCR, then Red Hat when ready
 .github/workflows/verify.yaml         # make verify on pull requests
 .github/workflows/pyxis-probe.yaml    # manual: what Red Hat's API returns for a component, names only
+.github/workflows/rh-submit.yaml      # manual, OUTWARD-FACING: submit one staged image to Red Hat from GHCR (a test of that route)
 renovate.json                   # upstream tag+commit, UBI digest, toolchain digest, tool images
 docs/                           # vision, method, roadmap, planning docs, ADRs, references
 ```
