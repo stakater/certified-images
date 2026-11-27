@@ -9,9 +9,9 @@ Stakater product deploys and turns it into an image that product can ship:
    network during the build;
 2. **checked**: it starts, it carries the labels and licences Red Hat requires,
    and it has no fixable CRITICAL or HIGH vulnerabilities;
-3. **staged** to a registry Stakater controls, with an SBOM, a signature and
-   build provenance, so products can test it;
-4. **certified** in Red Hat Partner Connect and published there, as the same
+3. **pushed** to a registry Stakater controls (GHCR), with an SBOM, a signature
+   and build provenance, so products can test it;
+4. **certified** by Red Hat and listed under Red Hat's address, as the same
    digest.
 
 **Why it exists.** Stakater products (Multi-Tenant Operator first, then SCO and
@@ -114,24 +114,27 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 
 - **Merging to `main` publishes.** A merge that touches an image pushes it to
   our registry (`ghcr.io/stakater/ubi/<name>`) and signs it. If the image has
-  a Partner Connect component ID, it is also submitted to Red Hat for
-  certification, which lists it publicly under Red Hat's address
-  (`publish.yaml`, ADR-002 rev 8). Never set a component ID without being asked.
+  a Partner Connect component ID, the pipeline then asks Red Hat how that
+  component is distributed and either copies the same digest to Red Hat's
+  registry or submits the GHCR image, and Red Hat lists it publicly
+  (`publish.yaml`, ADR-002). Never merge, push to `main`, or trigger a publish
+  without explicit authorization. Work on a feature branch and open a PR.
+- **Never set a component ID without being asked.** It is what makes an image
+  go to Red Hat.
 - **Being on GHCR is not being certified.** An image is certified once it has
   been submitted and Red Hat has accepted it. Never put a GHCR reference in
   anything shipped to a customer; customers use Red Hat's address.
-- **Never delete a tag or package from GHCR, and never make a package private.**
-  For most images Red Hat serves its address from our GHCR, so a deleted tag is
-  a broken customer install (`docs/red-hat-distribution.md`).
-- **Staging is private unless declared.** `staging.visibility: public` in
-  `image.yaml` is the owner's decision, per image, and only for rebuilds of
+- **Never delete a tag or package from GHCR, and never make a public package
+  private.** A release tag is never changed or removed (ADR-002 rule 3), and
+  for a component Red Hat lists without hosting, Red Hat's address depends on
+  the image staying on GHCR (`docs/red-hat-distribution.md`).
+- **GHCR packages are private unless declared.** `staging.visibility: public`
+  in `image.yaml` is the owner's decision, per image, and only for rebuilds of
   open-source software. Never add it without being asked, and never for an
-  image of Stakater's own code (ADR-002 rev 6). Never merge, push to `main`, or trigger a
-  publish without explicit authorization. Work on a feature branch and open a PR.
+  image of Stakater's own code (ADR-002).
 - **Secrets by reference only.** There is one Red Hat secret for the whole
   repository, `RH_PYXIS_TOKEN`, plus `RH_REGISTRY_KEYS` for components Red Hat
-  hosts. No secret is named per
-  image (ADR-002 rev 7); never add one. Never read, echo or inline a secret's
+  hosts. No secret is named per image (ADR-002); never add one. Never read, echo or inline a secret's
   value, and never print an API response without redacting it.
 - **Human steps stay human.** Creating a Partner Connect component, submitting
   an export questionnaire, adding repository secrets, and opening a PR on an
