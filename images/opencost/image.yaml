@@ -56,9 +56,12 @@ smoke:
     PROMETHEUS_SERVER_ENDPOINT: http://prometheus:9090
 
 redhat:
-  # Partner Connect container component (fill after creating the component)
-  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
-  # Push target: quay.io/redhat-isv-containers/<componentId>
+  # Partner Connect container component "Stakater build of OpenCost".
+  # Red Hat hosts this one (setup A in docs/red-hat-distribution.md): the
+  # pipeline copies the image to quay.io/redhat-isv-containers/6b07595f3ecfc52e21d75e12
+  # with this component's key from the RH_REGISTRY_KEYS secret.
+  # Customers pull: registry.connect.redhat.com/stakater/opencost
+  componentId: "6b07595f3ecfc52e21d75e12"
 
 # Staging visibility on GHCR (ADR-002 rev 6). Public on purpose, decided by the
 # owner on 2026-11-26: this is a rebuild of Apache-2.0 software on UBI, which

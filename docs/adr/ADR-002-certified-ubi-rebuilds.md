@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 8, 2026-11-27. Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 9, 2026-11-27. Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -18,8 +18,8 @@ One repository, `stakater/certified-images`, with one pipeline that rebuilds adm
 
 | Setup | Who stores the certified image | What the pipeline does for Red Hat | Secrets |
 |---|---|---|---|
-| **B. Red Hat lists it, we host it** (default for new components) | Our GHCR. Red Hat's address serves it from there | Submit the GHCR image for certification | `RH_PYXIS_TOKEN` only |
-| **A. Red Hat hosts it** | Red Hat's registry | Copy the same digest to Red Hat's registry, sign it there, submit | `RH_PYXIS_TOKEN` + that component's registry key |
+| **A. Red Hat hosts it** (default for new components) | Red Hat's registry | Copy the same digest to Red Hat's registry, sign it there, submit | `RH_PYXIS_TOKEN` + that component's registry key |
+| **B. Red Hat lists it, we host it** (not proven; do not use for new components) | Our GHCR | Submit the GHCR image for certification | `RH_PYXIS_TOKEN` only |
 
 The pipeline does not declare which setup an image uses. It asks Red Hat's API for the component's record and follows it, and fails if it cannot read it.
 
@@ -28,7 +28,7 @@ The pipeline does not declare which setup an image uses. It asks Red Hat's API f
 - GHCR's availability is part of the product's availability.
 - An image on GHCR is certified only once it has been submitted and Red Hat has accepted it. Being on GHCR is not being certified, and anything shipped to a customer still names Red Hat's address.
 
-(Revisions 5 to 7 called GHCR "staging" and promoted every image to Red Hat's registry by copy. The first real submission, on 2026-11-27, showed that a component can be listed by Red Hat while staying on GHCR, with no registry key. That is now the default, because it keeps the secrets from multiplying with images.)
+**Setup A is the default because it is the one that has been seen to deliver.** Revision 8 made setup B the default after a component was certified and listed while its image stayed on GHCR. The same day, a pull of that image from Red Hat's address was refused ("unauthorized") for more than eight hours, with a login that pulls our Red Hat-hosted images, although Red Hat's catalog advertises that pull command. Certification and listing work in setup B; delivery to a customer does not, for a reason we do not know. A question is open with Red Hat. Until a setup B image pulls from Red Hat's address, new components are created Red Hat-hosted, and the cost is one registry key per component, all held in one secret.
 
 **Visibility on GHCR is declared per image, and private is the default.** `image.yaml` may set `staging.visibility: public`. That is a decision made in a reviewed PR, and it is only for rebuilds of permissively licensed open-source software. An image of Stakater's own code (ADR-006) is never public by default. The pipeline asks the registry anonymously before and after each push and fails if a package is more open than its image declares. A private setup B image additionally needs Red Hat to hold a read credential for it.
 
@@ -73,9 +73,9 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 5. **Partner Connect.** One component per image, Red Hat Container Registry distribution. Batch new images into one export questionnaire.
    **Credentials.** We will publish many components, so credentials must not multiply with them where Red Hat allows:
    - **One Partner Connect API key for all images** (`RH_PYXIS_TOKEN`). The key belongs to a Partner Connect account; the component is chosen by the ID passed to preflight. It is created from a dedicated Stakater certification account, not a personal one, and its rotation is a documented runbook step (`docs/setup.md`).
-   - **New components are created as setup B**, which needs no registry credential at all.
+   - **New components are created Red Hat-hosted (setup A)**, see above.
    - **No secret is named per image.** A setup A component has its own registry login, which Red Hat issues. Its username is derived from the component ID, and its key is held in one shared secret, `RH_REGISTRY_KEYS`, a JSON object keyed by component ID. Fetching it from Red Hat's API was tried and is not possible.
-   - The repository therefore holds one Red Hat secret if every component is setup B, and two if any is setup A.
+   - The repository therefore holds two Red Hat secrets, whatever the number of images: `RH_PYXIS_TOKEN` and `RH_REGISTRY_KEYS`.
 6. **Governance.** CODEOWNERS on `images/**` and `.github/**`: only the factory team merges to `main`, which publishes (Iron Bank model). Anyone may open a PR.
    **One exception:** Renovate automerges UBI base-digest bumps after green CI. The diff is a single digest line, and waiting for a person on each one would break the 7-day SLA. Every other change, including upstream bumps and deviations, needs a factory-team review.
 7. **No invention.** A new pattern needs a reference in `docs/references.md`, or an ADR that names the gap as a risk.

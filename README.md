@@ -37,7 +37,7 @@ Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
 |---|---|---|---|---|
-| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration. Staged; latest `v1.121.5-2` | `registry.connect.redhat.com/stakater/opencost`, not published: component ID and secrets pending |
+| `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration | `registry.connect.redhat.com/stakater/opencost`. Red Hat-hosted component `6b07595f3ecfc52e21d75e12` set; published once its registry key is in `RH_REGISTRY_KEYS` |
 | `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and listed** in Red Hat's catalog: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ❌ **Not pullable from that address yet**: Red Hat's registry answers "unauthorized" with a valid login ([details](docs/red-hat-distribution.md)) |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
@@ -300,7 +300,7 @@ Pushing to GHCR needs no secrets. Red Hat needs **one repository secret**, and a
 | `RH_PYXIS_TOKEN` | Every component | Partner Connect API key. Submits certification results and reads how a component is distributed |
 | `RH_REGISTRY_KEYS` | Only components Red Hat hosts (setup A) | One JSON object holding each such component's registry key, keyed by component ID |
 
-A component created as "Red Hat lists it, we host it" needs no registry key at all. See [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
+New components are created Red Hat-hosted, which is the route that has been seen to deliver. The other route, where Red Hat lists an image that stays on GHCR, needs no registry key but is not proven: see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 
 **[docs/setup.md](docs/setup.md) is the step-by-step guide**: where each value comes from, where it goes in GitHub, the order to do things in, and what to check after the first publish. In short: add `RH_PYXIS_TOKEN` once; then per image, create the component and merge the PR that sets its ID. Only a Red Hat-hosted component also needs an entry in `RH_REGISTRY_KEYS`. That merge is the publish.
 
