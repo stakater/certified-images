@@ -21,6 +21,20 @@ build:
   # replaces github.com/dexidp/dex/api/v2 with ./api/v2.
   prefetch: '{"type": "gomod", "path": "."}'
 
+# Deviations from upstream (ADR-002 rule 2): dependency bumps that fix a
+# vulnerability in the patch SLA. Remove each one when upstream ships the fix.
+deviations:
+  - patch: patches/0001-bump-vulnerable-go-modules.patch
+    reason: >-
+      Three fixable HIGH vulnerabilities in Go modules. Upstream's master
+      branch already has newer versions of both; v2.46.1, the latest release,
+      does not (checked 2026-11-27). Drop this on the next upstream release.
+    fixes: [CVE-2026-116587, CVE-2026-78661, CVE-2026-78669]
+    bumps:
+      - github.com/go-jose/go-jose/v4 v4.1.5 -> v4.1.6
+      - golang.org/x/net v0.59.0 -> v0.62.0
+    upstreamPR: not needed, upstream master already carries newer versions
+
 # Differences from upstream's image, on purpose:
 #   - No gomplate and no docker-entrypoint. Upstream's entrypoint runs the
 #     config file through gomplate, a separate project we do not build. Dex
