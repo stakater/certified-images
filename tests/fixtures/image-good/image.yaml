@@ -21,6 +21,10 @@ smoke:
   env:
     LOG_LEVEL: debug
   args: ["serve", "--quiet"]
+  files:
+    /etc/example/config.yaml: |
+      listen: 0.0.0.0:8080
+      mode: test
 redhat:
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
 consumers: []

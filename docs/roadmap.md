@@ -64,12 +64,11 @@ SBOM and provenance, so that MTO can reference it by digest.*
   certified in Red Hat's catalog; the README's verify commands succeed against
   the **public pull spec** from a machine outside CI (ADR-008 open question 1);
   the provenance level we claim is recorded (ADR-007).
-- **State:** ready for first publish. The publish path is written; release
-  numbering and push are rehearsed in CI against a local registry. Login,
-  signing, attestations and submission have never run. Waiting on a person:
-  the Partner Connect component and its ID, the export questionnaire, the
-  repository secrets, then the merge that sets the ID, then verification from
-  outside CI.
+- **State:** submitted. On 2026-11-27 the pipeline pushed `v1.121.5-6` to
+  GHCR, copied the same digest to Red Hat's registry, signed it there and
+  submitted it; certification is in progress. Not published: Red Hat's export
+  approval for the component is pending. Still to do once it is published:
+  pull it from `registry.connect.redhat.com` from outside CI.
 
 **Story P.2a — every image is published to GHCR as a staging registry** 🔨 *(approved 2026-11-26; planning: [p2a-ghcr-staging](planning/p2a-ghcr-staging.md))*
 *As a product team, I want every image that passes the checks pushed, signed and
@@ -151,7 +150,6 @@ mirror, so that showback works without internet access.*
 - Make the pipeline callable from another repository (ADR-006), then move Reloader's build to the Reloader repository.
 - Split the pipeline into build-and-stage, test-on-OpenShift, promote-to-Red-Hat, once the OpenShift runner exists (P.2b level 2).
 - Reloader Console (Partner Connect component `6af9ac3f8523cfd9714c7645`) and Reloader Gateway (`6af9ac54ad3a47dac910b90b`): components exist; their source repository and release tags are not yet known to this repo.
-- Dex as the second third-party image.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).
 - Spike: build one Crossplane provider both ways and read the pod spec (ADR-005 open question 1).
 - First SCO Crossplane provider (ADR-005), after its open questions are answered.

@@ -1,0 +1,81 @@
+# One file per artifact (schema modelled on Iron Bank's hardening_manifest.yaml).
+kind: container
+name: dex
+displayName: Stakater build of Dex
+summary: "Dex OpenID Connect identity provider rebuilt from source on Red Hat UBI"
+description: >-
+  Dex is an OpenID Connect identity provider that federates other identity providers through connectors. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image.
+
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [dex, oidc, identity, authentication, sso]
+
+upstream:
+  repo: https://github.com/dexidp/dex
+  # renovate: datasource=github-tags depName=dexidp/dex
+  version: v2.46.1
+  commit: 75eb19238e10fc4750e7efb05a4031b254b04029   # tag must dereference to this (ADR-003)
+  license: Apache-2.0
+
+build:
+  # Hermeto prefetch input (ADR-003). Typed fetchers only. The root module
+  # replaces github.com/dexidp/dex/api/v2 with ./api/v2.
+  prefetch: '{"type": "gomod", "path": "."}'
+
+# Deviations from upstream (ADR-002 rule 2): dependency bumps that fix a
+# vulnerability in the patch SLA. Remove each one when upstream ships the fix.
+deviations:
+  - patch: patches/0001-bump-vulnerable-go-modules.patch
+    reason: >-
+      Three fixable HIGH vulnerabilities in Go modules. Upstream's master
+      branch already has newer versions of both; v2.46.1, the latest release,
+      does not (checked 2026-11-27). Drop this on the next upstream release.
+    fixes: [CVE-2026-116587, CVE-2026-78661, CVE-2026-78669]
+    bumps:
+      - github.com/go-jose/go-jose/v4 v4.1.5 -> v4.1.6
+      - golang.org/x/net v0.59.0 -> v0.62.0
+    upstreamPR: not needed, upstream master already carries newer versions
+
+# Differences from upstream's image, on purpose:
+#   - No gomplate and no docker-entrypoint. Upstream's entrypoint runs the
+#     config file through gomplate, a separate project we do not build. Dex
+#     itself still expands $ENV references in its config.
+#   - Built with CGO_ENABLED=0, so the sqlite3 storage is not available. The
+#     kubernetes, memory, postgres, mysql and etcd storages are.
+#   - Like upstream, the image has no ENTRYPOINT: the default command is
+#     "dex serve /etc/dex/config.yaml", and a chart that passes
+#     "dex serve ..." as args replaces it.
+test:
+  # Start-up test: the image must exit 0 when run with these arguments.
+  command: ["dex", "version"]
+
+# Smoke test (scripts/smoke-test.sh): run as a pod under restricted pod
+# security with a minimal config, and require the telemetry endpoint to report
+# ready. functional/test.sh then checks Dex serves OpenID Connect discovery
+# and signing keys.
+smoke:
+  port: 5558
+  path: /healthz/ready
+  args: ["dex", "serve", "/etc/dex/config.yaml"]
+  files:
+    /etc/dex/config.yaml: |
+      issuer: http://127.0.0.1:5556/dex
+      storage:
+        type: memory
+      web:
+        http: 0.0.0.0:5556
+      telemetry:
+        http: 0.0.0.0:5558
+      enablePasswordDB: true
+
+redhat:
+  # Partner Connect container component (fill after creating the component,
+  # as Red Hat-hosted: ADR-002 rev 9)
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+
+# Visibility on GHCR (ADR-002). Public on purpose, decided by the owner on
+# 2026-11-27: a rebuild of Apache-2.0 software on UBI.
+staging:
+  visibility: public
+
+consumers:
+  - multi-tenant-operator   # ⚠️ assumed from the roadmap; confirm which product deploys Dex

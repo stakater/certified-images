@@ -102,7 +102,7 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 - Answered 2026-11-26: the per-component registry key cannot be fetched with the API key. With a working key, `GET /projects/certification/id/<id>/secrets` returns only `docker_config_json`, empty, and the component record carries no registry credential. `RH_REGISTRY_KEYS` stays. (Probed against the Reloader component with `scripts/pyxis-probe.sh`.)
 - ⚠️ How `registry.connect.redhat.com` serves a setup B image has not been observed: whether it fetches from GHCR on each pull or keeps a copy. `docs/red-hat-distribution.md` has the two commands that settle it; they need a Red Hat login.
 - ⚠️ Whether a certified operator bundle may reference setup B images has not been tested. They are certified and listed under Red Hat's address, so it should.
-- ⚠️ The derived username format, `redhat-isv-containers+<componentId>-robot`, is from Red Hat's push instructions as remembered. The first real login confirms it.
+- Confirmed 2026-11-27: the derived username format, `redhat-isv-containers+<componentId>-robot`, logs in, and Red Hat's registry lists tags for a repository that has none yet.
 - ⚠️ That one API key covers every component is Red Hat's documented model and has not yet been exercised by this pipeline; the first publish of a second image confirms it.
 - ⚠️ Whether Red Hat ships a Dex image we are entitled to use as an operand (rule 1a). Check before admitting Dex.
 - The factory team is not named yet. Until it is, the interim owner is the only person who can merge.
