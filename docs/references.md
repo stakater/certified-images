@@ -61,7 +61,7 @@ Don't copy: apko/Wolfi as the runtime base. Red Hat certification needs UBI.
 | What we copy | Where | Used in |
 |---|---|---|
 | Provider = xpkg (OCI) containing `package.yaml`; Crossplane installs CRDs then a Deployment from the controller image | github.com/crossplane/crossplane issue #2671 ✅ | ADR-005 |
-| `crossplane xpkg build --embed-runtime-image(-tarball)` embeds our UBI controller image in the package | docs.crossplane.io/v2.1/cli/command-reference ✅ (flags exist). ⚠️ Which image the provider pod then runs is not documented; see ADR-005 open question 1 | ADR-005 |
+| `crossplane xpkg build --embed-runtime-image(-tarball)` embeds our UBI controller image in the package | docs.crossplane.io/v2.1/cli/command-reference ✅ (flags exist). The provider pod runs the xpkg itself ✅ (observed 2026-11-27 with Crossplane 2.5.0 and provider-nop v0.6.0; ADR-005) | ADR-005 |
 | Official reusable GitHub workflow for publishing provider/function packages | docs.crossplane.io/v2.4/guides/extensions-release-process ✅ | ADR-005 |
 | `ImageConfig` (`pkg.crossplane.io/v1beta1`): prefix match, pull secrets, signature verification, `rewriteImage.prefix` for mirrors | docs.crossplane.io/v2.x/packages/image-configs ✅ (rewrite since 1.20; ImageConfig since 1.18, backported 1.16.4/1.17.3) | ADR-005 air-gap |
 | `DeploymentRuntimeConfig` to override controller Deployment settings | crossplane design one-pager package-runtime-config ✅ | ADR-005 |

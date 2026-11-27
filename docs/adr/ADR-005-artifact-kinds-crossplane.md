@@ -1,6 +1,6 @@
 # ADR-005: Artifact kinds: container and Crossplane xpkg (SCO wrappers)
 
-- **Status:** Proposed (container implemented; xpkg designed, not built). Edited 2026-11-25 during review, before first acceptance.
+- **Status:** Proposed (container implemented; xpkg designed, not built). Edited 2026-11-25 during review and 2026-11-27 after a spike, before first acceptance.
 - **References:** Crossplane package model, `crossplane xpkg build --embed-runtime-image`, official extension release workflow, `ImageConfig`, `DeploymentRuntimeConfig`; Upbound UXP as prior art for a vendor Crossplane distribution (see `docs/references.md` §6)
 
 ## Context
@@ -17,7 +17,7 @@ So rebuilding only the controller image is not enough. The package must be rebui
 | kind | Output | Certified with Red Hat? | Pipeline |
 |---|---|---|---|
 | `container` | UBI image | Yes (Partner Connect container component) | ADR-002/003/004 |
-| `xpkg` | (1) UBI runtime image, built like `container`, **plus** (2) an xpkg rebuilt from upstream's `package/` dir so that it runs our runtime image | See open question 1 | Follows Crossplane's official reusable publish workflow |
+| `xpkg` | One image: our UBI runtime image, built like `container`, with the package metadata added on top by `crossplane xpkg build --embed-runtime-image`. **That xpkg is the image the provider's pod runs** (spike, below) | Yes, as a container image: it is an ordinary OCI image on a UBI base, and it is the operand | Follows Crossplane's official reusable publish workflow |
 
 OLM bundles for Stakater-owned operators are **not** a kind here. They are built in the product repo (ADR-006), so this repo's schema does not carry them.
 
@@ -29,14 +29,24 @@ Wrapper rules for `xpkg`:
 5. **Runtime overrides** (non-root UID for OpenShift SCC, resources) go in a `DeploymentRuntimeConfig` that SCO ships, not in patches to upstream.
 6. **Admission is per provider** (ADR-002 rule 1), never per family. A family is admitted one member at a time, each because SCO deploys it.
 
+## What the spike showed (2026-11-27)
+Crossplane 2.5.0 and `crossplane-contrib/provider-nop` v0.6.0 on a local cluster:
+
+- **The provider's pod runs the package image itself.** The Provider asked for `xpkg.crossplane.io/crossplane-contrib/provider-nop:v0.6.0`, and the Deployment Crossplane created runs exactly that reference, in a container named `package-runtime`.
+- **The xpkg is the controller image with the package metadata added.** It has four layers: two for the runtime image, and two small ones annotated `io.crossplane.xpkg` that carry `package.yaml` (the `Provider` metadata and the CRDs). Its entrypoint is the provider binary. Its package metadata names no separate controller image.
+- **Crossplane sets the pod to run as UID 2000.** OpenShift's restricted SCC rejects a fixed UID outside the namespace's range, so rule 5 below is required, not optional.
+
+So there is no "certified runtime image plus an uncertified xpkg". There is one image, and it has to be the certified one. Whether an xpkg passes Red Hat's preflight has not been tried; nothing about it looks unusual to preflight, since it is an OCI image on a UBI base with labels, licences and a non-root user, but that is the first thing to prove.
+
 ## Open questions (all must be answered before the first xpkg; this ADR stays Proposed until then)
-1. ⚠️ **Which image does the provider pod actually run?** With `crossplane xpkg build --embed-runtime-image(-tarball)`, the runtime is embedded in the package. If the pod then runs the xpkg image itself, the Red Hat-certified runtime digest is never the image that runs, and "runtime certified, xpkg signed only" does not satisfy the operand rule. The alternative is a package that references the certified image by digest instead of embedding it. Checked against the Crossplane docs on 2026-11-25: the flags are documented, the pod's image source is not. Settle it by building one provider both ways on a test cluster and reading the pod spec.
-2. ⚠️ Does Red Hat accept Crossplane provider runtime images as operands of a certified SCO operator? Ask our Red Hat partner contact; no public precedent found.
+1. **Answered by the spike:** the pod runs the xpkg itself. ⚠️ Still to prove: that an xpkg built on our UBI runtime image passes `preflight check container`.
+2. ⚠️ Does Red Hat accept Crossplane provider images as operands of a certified SCO operator? Ask our Red Hat partner contact; no public precedent found.
 3. SCO's Crossplane version: is it ≥ 1.20 for `rewriteImage`?
 4. Upjet providers are large (one image per family member). Measure build time and image count for one member before admitting a second.
 5. Licence or terms check per provider: crossplane-contrib is Apache-2.0; check Upbound-official providers individually.
+6. Which providers and functions does SCO deploy, and at which versions? The first one to build should be small and one SCO really uses.
 
 ## Consequences
 - \+ One factory for MTO operands and SCO providers.
-- − xpkg adds a second artifact per image and a dependency-rewrite step.
-- − Questions 1 and 2 can each invalidate the xpkg design. No xpkg work starts before they are answered.
+- − An xpkg adds a packaging step and a dependency-rewrite step on top of the container build.
+- − Question 2, and the preflight result in question 1, can each invalidate the design. A first xpkg is built as a pull-request-only experiment before anything is promised.
