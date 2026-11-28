@@ -116,7 +116,7 @@ promoted to Red Hat.*
 - **State:** level 1 is done: every PR runs the smoke test on a local cluster
   under restricted pod security, and two broken fixtures prove it can fail.
   Level 2 (a real OpenShift cluster, gating promotion) is not built.
-  Extended 2026-11-27 (⚠️ scope change, awaiting approval in its pull request):
+  Extended 2026-11-27 (approved by the owner 2026-11-28, with the instruction to merge its pull request):
   an image that cannot run as one bare pod ships `smoke/deploy.sh` and deploys
   itself into the same restricted namespace. Crossplane is the first.
 - **Open for level 2:** which OpenShift cluster, and who provides its
