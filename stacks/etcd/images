@@ -1,0 +1,5 @@
+# The etcd stack: the operator and the two containers of every etcd pod it
+# creates. They only work together (story E.1).
+etcd-druid
+etcd-wrapper
+etcd-backup-restore

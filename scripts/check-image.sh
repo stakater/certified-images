@@ -204,5 +204,11 @@ if [ -d "$DIR/functional" ]; then
   fi
 fi
 
+# rule 18: build.dropVendor, when present, is a boolean (ADR-003 §7). A typo
+# would otherwise be read as "do not drop" and the prefetch would fail later.
+if ! printf '%s' "$JSON" | jq -e '(.build // {}) | (has("dropVendor") | not) or (.dropVendor | type == "boolean")' >/dev/null; then
+  err 18 "build.dropVendor must be true or false, got '$(get .build.dropVendor)'"
+fi
+
 [ "$errors" -eq 0 ] || exit 1
 echo "$DIR: ok"

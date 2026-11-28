@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - images/**
+      - stacks/**
       - scripts/**
       - Makefile
       - tools.env
@@ -36,6 +37,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       dirs: ${{ steps.list.outputs.dirs }}
+      stacks: ${{ steps.list.outputs.stacks }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -48,6 +50,11 @@ jobs:
             grep -E '^images/[a-z0-9]([a-z0-9-]*[a-z0-9])?$' | jq -R . | jq -cs .)
           echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
           echo "Images: $dirs"
+          # Stacks: images that only work together (story E.1).
+          stacks=$(find stacks -mindepth 2 -maxdepth 2 -name images -exec dirname {} \; 2>/dev/null | sort |
+            { grep -E '^stacks/[a-z0-9]([a-z0-9-]*[a-z0-9])?$' || true; } | jq -R . | jq -cs .)
+          echo "stacks=$stacks" >> "$GITHUB_OUTPUT"
+          echo "Stacks: $stacks"
 
   hermetic:
     name: builds cannot reach the network
@@ -79,3 +86,25 @@ jobs:
     uses: ./.github/workflows/build-certify.yaml
     with:
       image-dir: ${{ matrix.dir }}
+
+  # Images that only work together, built from this checkout and run with each
+  # other. The per-image jobs above run each one next to upstream's builds of
+  # its peers, which cannot show that ours work together (story E.1).
+  stack:
+    name: stack (${{ matrix.dir }})
+    needs: list
+    if: ${{ needs.list.outputs.stacks != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.list.outputs.stacks) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Build the stack's images and run them together
+        env:
+          STACK_DIR: ${{ matrix.dir }}
+        run: make stack STACK_DIR="$STACK_DIR"

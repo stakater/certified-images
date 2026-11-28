@@ -7,6 +7,8 @@
 #    was moved or re-pointed after we pinned it stops the build.
 # 3. Applies images/<name>/patches/*.patch, which may touch dependency
 #    manifests and lockfiles only.
+# 4. Removes upstream's vendor/ directory when image.yaml sets
+#    build.dropVendor (ADR-003 §7).
 # .git is left in place: Hermeto refuses a source directory that is not a git
 # repository. scripts/prefetch.sh removes it once the prefetch is done.
 set -euo pipefail
@@ -75,5 +77,16 @@ for patch in ${patches[@]+"${patches[@]}"}; do
   git -C "$OUT" apply "$(cd "$(dirname "$patch")" && pwd)/$(basename "$patch")" || die "patch $patch does not apply to $VERSION"
   echo "fetch-source: applied $(basename "$patch")" >&2
 done
+
+# An upstream that vendors its dependencies (ADR-003 §7): drop the copy, so the
+# prefetch fetches them and verifies them against go.sum, as for every other
+# image. A declaration with nothing to drop is stale, and fails.
+drop_vendor=$(printf '%s' "$JSON" | jq -r '.build.dropVendor // false')
+if [ "$drop_vendor" = "true" ]; then
+  [ -f "$OUT/vendor/modules.txt" ] ||
+    die "$YAML sets build.dropVendor, but $VERSION has no vendor/modules.txt. Remove the setting."
+  rm -rf "$OUT/vendor"
+  echo "fetch-source: dropped upstream's vendor/ (build.dropVendor)" >&2
+fi
 
 echo "fetch-source: $REPO $VERSION @ $COMMIT -> $OUT" >&2
