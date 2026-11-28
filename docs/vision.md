@@ -41,8 +41,10 @@ verifiable, digest-pinned artifact, the same way every time.
 
 ## What this is not
 
-- Not a general hardened-image catalogue. An image is admitted only when a
-  Stakater product deploys it (ADR-002 rule 1).
+- Not a general hardened-image catalogue. It is the catalogue of the hardened
+  images Stakater's products use: an image is admitted only when a Stakater
+  product deploys it (ADR-002 rule 1). Those images are public, with their
+  evidence, on the catalogue site (ADR-002 rev 12, story S.1).
 - Not a fork. We rebuild upstream at a pinned commit and keep its APIs.
 - Not a replacement for Red Hat's own images. Where Red Hat ships one, use it.
 
@@ -50,5 +52,6 @@ verifiable, digest-pinned artifact, the same way every time.
 
 - Who owns the factory? ADR-002 lists the factory owner as TBD, and every
   admitted image is a permanent patching commitment.
-- Is the catalogue also a product customers buy, or only an enabler for the
-  other products? The answer changes how much evidence and SLA we promise.
+- Answered in part, 2026-11-28: the catalogue is public and customers may use
+  the images from GHCR, as an enabler for the products. Still open: whether it
+  is also something customers buy, and what patch SLA we promise in public.

@@ -1152,6 +1152,50 @@ for sdir in stacks/*/; do
     [ -x '${sdir}test.sh' ] && grep -v '^#' '${sdir}images' | grep . | while read -r i; do [ -f \"images/\$i/image.yaml\" ] || exit 1; done"
 done
 
+# ------------------------------------------------------------ site-data.sh
+# The catalogue site's data (story S.1). Offline: no registry, GitHub or Red
+# Hat lookups. Three images: one public with a deviation, one not declared
+# public, one public with a real component ID.
+SD="$TMP/site-data"
+mkdir -p "$SD/images/pub/patches" "$SD/images/priv" "$SD/images/listed" "$SD/stacks/pair" "$SD/out"
+sd_image() { # <name> <extra yaml appended>
+  sed "s/^name: image-good/name: $1/" "$FIX/image-good/image.yaml" >"$SD/images/$1/image.yaml"
+  cp "$FIX/image-good/Containerfile" "$SD/images/$1/Containerfile"
+  printf '%b' "$2" >>"$SD/images/$1/image.yaml"
+}
+sd_image pub 'staging:\n  visibility: public\ndeviations:\n  - patch: patches/0001-bump.patch\n    reason: a fix upstream has not released\n    fixes: [CVE-2026-0001]\n    bumps:\n      - example.com/dep v1.0.0 -> v1.0.1\n    upstreamPR: none yet\n'
+sed -i.bak 's/^consumers: \[\]/consumers: [product-one]/' "$SD/images/pub/image.yaml" && rm -f "$SD/images/pub/image.yaml.bak"
+sd_image priv ''
+sd_image listed 'staging:\n  visibility: public\n'
+sed -i.bak 's/TODO-PARTNER-CONNECT-COMPONENT-ID/0123456789abcdef01234567/' "$SD/images/listed/image.yaml" && rm -f "$SD/images/listed/image.yaml.bak"
+printf 'pub\nlisted\n' >"$SD/stacks/pair/images"
+printf '[{"name":"external-db","address":"registry.example/db","status":"Not assessed by our CVE gate","note":"n"}]\n' >"$SD/external.json"
+site_data() { SITE_OFFLINE=1 SITE_IMAGES_DIR="$SD/images" SITE_STACKS_DIR="$SD/stacks" SITE_EXTERNAL="$SD/external.json" scripts/site-data.sh "$1"; }
+sdq() { jq -e "$1" "$SD/out/catalog.json" >/dev/null; } # sdq <jq filter that must be true>
+expect_pass "site-data: writes catalog.json" site_data "$SD/out"
+expect_pass "site-data: lists every image declared public" sdq '[.images[].name] | sort == ["listed","pub"]'
+expect_pass "site-data: an image not declared public is absent" sdq '[.images[].name] | index("priv") == null'
+expect_pass "site-data: the upstream pin and licence are carried over" \
+  sdq '.images[] | select(.name=="pub") | .upstream.version == "v1.2.3" and .upstream.commit == "0123456789abcdef0123456789abcdef01234567" and .upstream.license == "Apache-2.0"'
+expect_pass "site-data: consumers and deviations are carried over" \
+  sdq '.images[] | select(.name=="pub") | .consumers == ["product-one"] and .deviations[0].fixes == ["CVE-2026-0001"] and .deviations[0].upstreamPR == "none yet"'
+expect_pass "site-data: the address is the GHCR repository of the image" \
+  sdq '.images[] | select(.name=="pub") | .repository == "ghcr.io/stakater/ubi/pub"'
+expect_pass "site-data: the base image and its digest come from the Containerfile" \
+  sdq '.images[] | select(.name=="pub") | (.base.image | test("ubi")) and (.base.digest | test("^sha256:[a-f0-9]{64}$"))'
+expect_pass "site-data: a placeholder component ID means not submitted to Red Hat" \
+  sdq '.images[] | select(.name=="pub") | .redhat.status == "not-submitted"'
+expect_pass "site-data: a real component ID with no answer from Red Hat is unknown, never certified" \
+  sdq '.images[] | select(.name=="listed") | .redhat.status == "unknown"'
+expect_pass "site-data: offline, no release is listed and none is marked verified" \
+  sdq '[.images[] | .releases | length] == [0,0] and ([.images[].releases[]? | select(.provenance == "verified")] | length == 0)'
+expect_pass "site-data: the stacks an image is in are named" sdq '.images[] | select(.name=="pub") | .stacks == ["pair"]'
+expect_pass "site-data: images used from elsewhere are carried over" sdq '.external[0].name == "external-db"'
+expect_pass "site-data: it says when and from what it was generated" sdq '(.generated | test("^20[0-9]{2}-")) and (.offline == true)'
+mkdir -p "$SD/broken/images/bad" "$SD/broken/out" && printf 'kind: container\nname: [unclosed\n' >"$SD/broken/images/bad/image.yaml"
+expect_fail "site-data: a manifest that cannot be read fails, the image is not skipped" "bad" \
+  env SITE_OFFLINE=1 SITE_IMAGES_DIR="$SD/broken/images" SITE_STACKS_DIR="$SD/stacks" SITE_EXTERNAL="$SD/external.json" scripts/site-data.sh "$SD/broken/out"
+
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
 # Capture first, then match the command's own output line. Piping straight into

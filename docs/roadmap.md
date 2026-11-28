@@ -184,6 +184,15 @@ built, so that a person only has to review it.*
   deviation recorded; the change is pushed as a pull request and built with the
   smoke and functional tests. It is never merged automatically.
 
+**Story S.1 — a public catalogue of the images** 🔨 *(approved 2026-11-28; planning: [s1-catalog-site](planning/s1-catalog-site.md); decision: ADR-002 rev 12)*
+*As a product team or a customer, I want a site that lists the hardened images
+Stakater's products use, with a detailed page for each, so that I can find the
+release to use, see what it was put through, and check it myself.*
+- **Done:** a static site on GitHub Pages, generated from this repository, the
+  registry, GitHub's attestations and Red Hat's catalogue; it lists exactly the
+  images declared public, by GHCR digest; it says "certified" only where Red
+  Hat lists the image; it is rebuilt after every publish and every day.
+
 **Story P.3 — MTO installs OpenCost from a mirror** 📝
 *As a customer with an air-gapped cluster, I want MTO to deploy OpenCost from my
 mirror, so that showback works without internet access.*

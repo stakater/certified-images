@@ -21,7 +21,7 @@ IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
 RUN = $(ENGINE) run --rm -v "$(CURDIR)":/work:ro -w /work
 
 .PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test \
-	build test-image scan preflight image test-hermetic publish-rehearsal smoke test-smoke stack
+	build test-image scan preflight image test-hermetic publish-rehearsal smoke test-smoke stack site
 
 verify: lint check-renovate check-images test ## run every check
 	@echo "verify: all checks passed"
@@ -80,6 +80,16 @@ STACK_DIR ?= stacks/$(STACK)
 
 stack: ## build a stack's images and run them together on a throwaway local cluster
 	ENGINE=$(ENGINE) scripts/stack-test.sh $(STACK_DIR)
+
+# The public catalogue site (story S.1): the data, read from this checkout,
+# the registry, GitHub and Red Hat's catalogue, plus the static pages.
+#   make site            # then serve _site/ with any static file server
+SITE_OUT ?= _site
+
+site: ## generate the catalogue site into _site/
+	@rm -rf "$(SITE_OUT)" && mkdir -p "$(SITE_OUT)"
+	cp site/index.html site/image.html site/app.js site/style.css "$(SITE_OUT)/"
+	ENGINE=$(ENGINE) scripts/site-data.sh "$(SITE_OUT)"
 
 test-smoke: ## prove the smoke test rejects images that do not work
 	ENGINE=$(ENGINE) scripts/test-smoke.sh
