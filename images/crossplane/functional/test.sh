@@ -68,7 +68,12 @@ if ! kubectl wait provider.pkg.crossplane.io/smoke-provider-nop --for=condition=
 fi
 echo "ok   - Crossplane installed a provider: package pulled, CRDs installed, controller running"
 
-kubectl -n "$NS" apply -f - >/dev/null <<YAML
+# A Healthy provider is not yet a listening one: its admission webhook starts a
+# moment after its controller, and until then the API server refuses the
+# resource ("connection refused"). Retry until the webhook answers.
+deadline=$(($(date +%s) + TIMEOUT))
+until out=$(
+  kubectl -n "$NS" apply -f - 2>&1 <<YAML
 apiVersion: nop.crossplane.io/v1alpha1
 kind: NopResource
 metadata:
@@ -80,6 +85,13 @@ spec:
         conditionType: Ready
         conditionStatus: "True"
 YAML
+); do
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "FAIL - the provider did not accept a resource within ${TIMEOUT}s: $out" >&2
+    exit 1
+  fi
+  sleep 2
+done
 
 if ! kubectl -n "$NS" wait nopresource.nop.crossplane.io/smoke --for=condition=Ready --timeout="${TIMEOUT}s" >/dev/null 2>&1; then
   echo "FAIL - the provider's resource did not become Ready within ${TIMEOUT}s" >&2
