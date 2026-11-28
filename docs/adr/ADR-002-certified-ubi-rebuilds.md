@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 11, 2026-11-28 (rule 1: what applies when our gate cannot assess a Red Hat image; PostgreSQL is the first case). Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 12, 2026-11-28 (public images on GHCR are a way customers get them; a public catalogue site). Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -26,9 +26,17 @@ The pipeline does not declare which setup an image uses. It asks Red Hat's API f
 **For a setup B image, GHCR is where the published image lives, not a staging area.** Three rules follow:
 - A tag that has been submitted to Red Hat is never deleted from GHCR, and its package is never made private without first giving Red Hat a read credential.
 - GHCR's availability is part of the product's availability.
-- An image on GHCR is certified only once it has been submitted and Red Hat has accepted it. Being on GHCR is not being certified, and anything shipped to a customer still names Red Hat's address.
+- An image on GHCR is certified only once it has been submitted and Red Hat has accepted it. Being on GHCR is not being certified. A certified operator's bundle names Red Hat's address for its operands.
 
 **Setup A is the default because it is the one that has been seen to deliver.** Revision 8 made setup B the default after a component was certified and listed while its image stayed on GHCR. The same day, a pull of that image from Red Hat's address was refused ("unauthorized") for more than eight hours, with a login that pulls our Red Hat-hosted images, although Red Hat's catalog advertises that pull command. Certification and listing work in setup B; delivery to a customer does not, for a reason we do not know. A question is open with Red Hat. Until a setup B image pulls from Red Hat's address, new components are created Red Hat-hosted, and the cost is one registry key per component, all held in one secret.
+
+**A public image on GHCR is one customers may use, and the catalogue site says so.** Decided by the owner on 2026-11-28. Until revision 11, GHCR was staging only and customers were given Red Hat's address and nothing else. That fits a certified operator on OpenShift. It does not fit a customer on AKS or EKS, where Red Hat's partner registry needs a Red Hat login and our public GHCR images need none. So:
+- The hardened images Stakater's products use are published as a public catalogue (story S.1): a site generated from this repository that lists each image declared public, its GHCR address by digest, and its evidence.
+- The site and anything else given to a customer may name the GHCR address of an image declared public, **by digest**.
+- It must say what the image is and is not: built, tested, scanned and signed by this pipeline; **certified only if Red Hat lists it**, which the site reads from Red Hat's catalogue and never asserts by itself.
+- An operator bundle submitted to Red Hat still references Red Hat's address for its operands. That rule is Red Hat's, not ours to change.
+- An image not declared public does not appear on the site at all.
+This is the catalogue of images Stakater's products use, kept small by rule 1. It is not an offer to harden images on request.
 
 **Visibility on GHCR is declared per image, and private is the default.** `image.yaml` may set `staging.visibility: public`. That is a decision made in a reviewed PR, and it is only for rebuilds of permissively licensed open-source software. An image of Stakater's own code (ADR-006) is never public by default. The pipeline asks the registry anonymously before and after each push and fails if a package is more open than its image declares. A private setup B image additionally needs Red Hat to hold a read credential for it.
 
@@ -90,6 +98,7 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 
 ## Consequences
 - \+ Air gap and certification are solved once and reused across MTO, SCO and Reloader.
+- − A public catalogue is a public promise. Each listed image shows whether it is patched and when it was last built, so a neglected image is visible to everyone, not only to us.
 - \+ Pushing to GHCR first removes Red Hat's manual gates from the critical path: an image is usable for testing before its component or export approval exist.
 - \+ With setup B, adding an image needs no new secret, and the signature customers can verify sits beside the very digest Red Hat lists.
 - − A public GHCR image can be pulled by anyone before it is certified, and stays pullable if it later fails.

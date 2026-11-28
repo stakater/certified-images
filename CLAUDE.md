@@ -43,6 +43,7 @@ status, image names or version numbers here; they go stale.
 | What is still unverified | ⚠️ marks in `docs/`, and `README.md` |
 | How the pieces fit together (diagrams) | `README.md`, "How it works" |
 | How an image reaches a customer through Red Hat | `docs/red-hat-distribution.md` |
+| What the public catalogue site shows, and from what | `docs/planning/s1-catalog-site.md`, `scripts/site-data.sh`, `site/` |
 | What a person must set up, and the secrets | `docs/setup.md` |
 
 ## Read first
@@ -122,8 +123,10 @@ These come from the ADRs. The ADR wins if this list and an ADR disagree.
 - **Never set a component ID without being asked.** It is what makes an image
   go to Red Hat.
 - **Being on GHCR is not being certified.** An image is certified once it has
-  been submitted and Red Hat has accepted it. Never put a GHCR reference in
-  anything shipped to a customer; customers use Red Hat's address.
+  been submitted and Red Hat has accepted it. A public image's GHCR address
+  may be given to customers, by digest, and is shown on the catalogue site
+  (ADR-002 rev 12). Never call an image certified unless Red Hat lists it, and
+  never put a GHCR reference in an operator bundle submitted to Red Hat.
 - **Never delete a tag or package from GHCR, and never make a public package
   private.** A release tag is never changed or removed (ADR-002 rule 3), and
   for a component Red Hat lists without hosting, Red Hat's address depends on
@@ -232,6 +235,8 @@ scripts/rh-registry-login.sh   logs in to Red Hat's registry for a component: de
 scripts/pyxis-probe.sh         what Red Hat's API returns for a component, field names only
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched
+scripts/site-data.sh           the catalogue site's data: every public image, its releases, evidence and Red Hat status
+site/                          the catalogue site's pages (static; they render site-data's JSON), and external.json for images used from Red Hat
 scripts/rescan-image.sh        scans the newest published release; scan-findings.sh and latest-release.sh support it
 scripts/report-findings.sh     one GitHub issue per image for its open findings
 scripts/auto-fix.sh            prepares the fix: bump-base.sh for UBI packages, fix-go-deps.sh + update-deviations.sh for Go modules
