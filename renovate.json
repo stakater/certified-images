@@ -80,11 +80,11 @@
       "automerge": false
     },
     {
-      "description": "Node follows the major version upstream's .nvmrc asks for; a human bumps it with the upstream release",
+      "description": "Node stays on the major version upstream's .nvmrc asks for (24, images/prometheus); a human raises this ceiling with the upstream release that moves it",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["docker.io/library/node"],
-      "matchUpdateTypes": ["major"],
-      "enabled": false
+      "allowedVersions": "<25",
+      "automerge": false
     },
     {
       "description": "Upstream bumps need a human: check go.mod Go version, licence, NOTICE changes",

@@ -272,7 +272,7 @@ sequenceDiagram
   CI->>RH: Same version, next release number
 ```
 
-⚠️ Renovate and the automerge have not run on this repository yet; the last diagram shows the design.
+⚠️ The hosted Renovate app and the automerge have not run on this repository yet; the last diagram shows the design. The config itself was run locally in report-only mode on 2026-11-28 and detects every pin (docs/setup.md, step 2).
 
 ## Layout
 ```
