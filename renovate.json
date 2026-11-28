@@ -73,6 +73,20 @@
       "automerge": false
     },
     {
+      "description": "pnpm stays on 11.x: pnpm 12 refuses the relative tarball paths Hermeto writes for an offline install (images/prometheus, story P.1b). Lift when the pinned Hermeto supports it",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/pnpm/pnpm"],
+      "allowedVersions": "<12",
+      "automerge": false
+    },
+    {
+      "description": "Node follows the major version upstream's .nvmrc asks for; a human bumps it with the upstream release",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["docker.io/library/node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "description": "Upstream bumps need a human: check go.mod Go version, licence, NOTICE changes",
       "matchDatasources": ["github-tags", "github-releases"],
       "automerge": false
