@@ -278,6 +278,7 @@ images/<name>/vex.openvex.json  # optional CVE exceptions (ADR-008)
 images/<name>/smoke/*.yaml      # optional fixtures the smoke test deploys first
 images/<name>/smoke/deploy.sh   # optional: the image deploys itself for the smoke test, when one bare pod is not enough
 images/<name>/functional/test.sh # optional test of what the image does, run after the smoke test
+stacks/<name>/                  # images that only work together: the list, and a test that runs them with each other
 scripts/                        # one script per pipeline step; the same scripts run locally and in CI
 scripts/templates/              # what new-image.sh scaffolds from
 .claude/skills/                 # add-image and fix-cve procedures for Claude Code

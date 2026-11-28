@@ -1110,6 +1110,48 @@ expect_pass "check-image: build.dropVendor: true passes" scripts/check-image.sh 
 dir=$(mutate drop-vendor-word image.yaml 's/^build:$/build: {dropVendor: yes-please, prefetch: '"'"'{"type": "gomod", "path": "."}'"'"'}/;/^  prefetch:/d')
 expect_fail "check-image: build.dropVendor that is not a boolean fails rule 18" "rule 18:" scripts/check-image.sh "$dir"
 
+# ----------------------------------------------------------- stack-test.sh
+# A stack is several of our images run together (story E.1). No builds and no
+# cluster here: the script's own rules, and what it hands to the test.
+# st <case> <images file content> <test.sh body>: a stack directory
+st() {
+  local dir="$TMP/stacks/$1"
+  mkdir -p "$dir"
+  [ -z "$2" ] || printf '%b' "$2" >"$dir/images"
+  if [ -n "$3" ]; then
+    printf '#!/usr/bin/env bash\n%s\n' "$3" >"$dir/test.sh"
+    chmod +x "$dir/test.sh"
+  fi
+  echo "$dir"
+}
+stack() { STACK_SKIP_BUILD=1 STACK_NO_CLUSTER=1 scripts/stack-test.sh "$@"; }
+d=$(st ok '# two images\ndex\nopencost\n' 'exit 0')
+expect_pass "stack-test: a stack whose test passes, passes" stack "$d"
+# shellcheck disable=SC2016 # the variables are for the generated script
+d=$(st env 'dex\nopencost\n' '[ "$TEST_IMAGE_DEX" = localhost/stakater/dex:build ] && [ "$TEST_IMAGE_OPENCOST" = localhost/stakater/opencost:build ] && [ -n "$TEST_SOURCE_DEX" ] && [ -d "$TEST_ROOT/images" ] && [ -n "$TEST_TIMEOUT" ]')
+expect_pass "stack-test: the test is given every image, its source, the repository and a timeout" stack "$d"
+d=$(st fails 'dex\nopencost\n' 'echo "etcd never started" >&2; exit 1')
+expect_fail "stack-test: a failing test fails the stack" "do not work together" stack "$d"
+expect_fail "stack-test: and the test's own explanation is shown" "etcd never started" stack "$d"
+d=$(st no-images '' 'exit 0')
+expect_fail "stack-test: a stack without an images file fails" "images is missing" stack "$d"
+d=$(st unknown 'dex\nno-such-image\n' 'exit 0')
+expect_fail "stack-test: an image that does not exist fails" "no images/no-such-image" stack "$d"
+d=$(st single 'dex\n' 'exit 0')
+expect_fail "stack-test: one image is not a stack" "at least two" stack "$d"
+d=$(st bad-name 'dex\n../opencost\n' 'exit 0')
+expect_fail "stack-test: a line that is not an image name fails" "not an image name" stack "$d"
+d=$(st no-test 'dex\nopencost\n' '')
+expect_fail "stack-test: a stack without test.sh fails, it is not skipped" "test.sh is missing" stack "$d"
+d=$(st notexec 'dex\nopencost\n' 'exit 0') && chmod -x "$d/test.sh"
+expect_fail "stack-test: a test.sh that is not executable fails, it is not skipped" "not executable" stack "$d"
+# Every stack in the repository names real images and has an executable test.
+for sdir in stacks/*/; do
+  [ -d "$sdir" ] || continue
+  expect_pass "stack-test: ${sdir%/} is well formed" bash -c "
+    [ -x '${sdir}test.sh' ] && grep -v '^#' '${sdir}images' | grep . | while read -r i; do [ -f \"images/\$i/image.yaml\" ] || exit 1; done"
+done
+
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
 # Capture first, then match the command's own output line. Piping straight into
