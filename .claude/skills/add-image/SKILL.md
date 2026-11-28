@@ -27,6 +27,8 @@ image is not admitted (ADR-003).
 
 Only Go upstreams have a template today. For another language, stop and say
 that a template and a Hermeto fetcher check are needed first; that is a story.
+A Go program with a web UI built with pnpm is covered (ADR-003 §8): see
+`images/prometheus` for the extra build stage and the `pnpm` prefetch entries.
 
 ## 2. Scaffold
 

@@ -1,0 +1,63 @@
+# One file per artifact (schema modelled on Iron Bank's hardening_manifest.yaml).
+#
+# Admission (a), ADR-002 rule 1 rev 10: Red Hat ships
+# registry.access.redhat.com/hi/prometheus, but on 2026-11-27 it failed our CVE
+# gate (1 HIGH in golang.org/x/net), so we build.
+kind: container
+name: prometheus
+displayName: Stakater build of Prometheus
+summary: "Prometheus monitoring system and time series database rebuilt from source on Red Hat UBI"
+description: >-
+  Prometheus collects metrics from configured targets, stores them as time series, evaluates rules and answers queries. This image holds the Prometheus server with its web UI built in, and promtool. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image.
+
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [prometheus, monitoring, metrics, alerting, time-series]
+
+upstream:
+  repo: https://github.com/prometheus/prometheus
+  # renovate: datasource=github-tags depName=prometheus/prometheus
+  version: v3.16.0
+  commit: e2e28adeee2c5883d000fc82aca6008cfbf7e96d   # tag must dereference to this (ADR-003)
+  license: Apache-2.0
+
+build:
+  # Hermeto prefetch input (ADR-003). Typed fetchers only: the Go modules, and
+  # the two pnpm lockfiles of the web UI (web/ui, and the older React app that
+  # upstream keeps outside the workspace). Story P.1b.
+  prefetch: '[{"type": "gomod", "path": "."}, {"type": "pnpm", "path": "web/ui"}, {"type": "pnpm", "path": "web/ui/react-app"}]'
+
+# Differences from upstream's image, on purpose:
+#   - The web UI is built here from source, with the network off, not taken
+#     from upstream's prebuilt prometheus-web-ui tarball.
+#   - The build date, user and branch are not compiled in, so the same source
+#     gives the same binary. Version and revision are.
+#   - Same paths, entrypoint and default command as upstream: /bin/prometheus,
+#     /bin/promtool, /etc/prometheus/prometheus.yml, working directory
+#     /prometheus. The data directory is writable by group 0, so an arbitrary
+#     UID can use it (OpenShift); deployments normally mount a volume there.
+#   - ⚠️ The licence texts of the JavaScript packages bundled into the UI are
+#     not in /licenses. Upstream's image does not carry them either; upstream's
+#     release tarball does (npm_licenses.tar.bz2). To settle before this image
+#     is submitted to Red Hat.
+test:
+  # Start-up test: the image must exit 0 when run with these arguments.
+  command: ["--version"]
+
+# Smoke test: Prometheus needs a writable data directory, which the generic
+# smoke pod does not have. smoke/deploy.sh runs it as one pod under restricted
+# pod security with an emptyDir for its data, and waits for /-/ready.
+# functional/test.sh then checks it scrapes, answers a query and serves its UI.
+
+redhat:
+  # Partner Connect container component (fill after creating the component,
+  # as Red Hat-hosted: ADR-002)
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+
+# Visibility on GHCR (ADR-002). Public on purpose, decided by the owner on
+# 2026-11-28 for the images added that day: a rebuild of Apache-2.0 software
+# on UBI.
+staging:
+  visibility: public
+
+consumers:
+  - multi-tenant-operator   # MTO, stated by the owner 2026-11-27
