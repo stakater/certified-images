@@ -57,13 +57,23 @@ render it in the browser.
   - from Red Hat's public catalogue API: for an image with a component ID,
     whether `registry.connect.redhat.com/stakater/<name>` is published.
     Unreachable or absent means "not listed" or "unknown", never "certified";
+  - from the newest release itself, with the pinned tools (added 2026-11-28,
+    after the owner asked for more detail, with Red Hat's image pages as the
+    model): its container configuration and size (crane); whether its signature
+    verifies and its two signed SBOMs, verified and unpacked (cosign, now
+    pinned in `tools.env`); and a scan of every severity (trivy). These go to
+    `details/<name>.json` and `sbom/<name>.<kind>.spdx.json`. The scan shown is
+    wider than the build gate, which refuses fixable critical and high only:
+    the site shows every finding, fixable or not, and says which is which.
   - `site/external.json`, kept by hand: images used from Red Hat, with how far
     we could check them.
   - `SITE_OFFLINE=1` skips every network source (releases empty, statuses
     "unknown"); the unit tests use it.
 - `site/index.html`, `site/image.html`, `site/app.js`, `site/style.css`: the
-  catalogue and one page per image (`image.html?name=<name>`), with sections
-  Overview, Get started, Security, Checks, Releases, Source and build.
+  catalogue and one page per image (`image.html?name=<name>`), with a header
+  (architecture, stream, size, last built, and a card with the scan result)
+  and tabs: Overview, Container details, Tags, SBOM (searchable, with the SPDX
+  files to download), Verify build, CVEs.
 - `make site` writes `_site/` (data plus pages), viewable by opening the file
   through any static server.
 - `.github/workflows/site.yaml`: builds on pull requests (uploaded as an
@@ -83,6 +93,8 @@ render it in the browser.
 - an image with the placeholder component ID has Red Hat status
   "not submitted"; with a real ID and no network, "unknown", not "certified";
 - offline, releases are empty and nothing is marked verified;
+- offline, an image's scan, SBOM and signature are "unknown" with no counts and
+  no package list: an unread scan must never look like a clean one;
 - a malformed `image.yaml` fails the script; it does not skip the image.
 - The pages are static; `make verify` lints the workflow and the script. The
   pages themselves are checked by hand against the generated data, stated in
@@ -97,9 +109,7 @@ render it in the browser.
 
 ## Out of scope
 
-- The package list of each image from its SBOM, and current scan results per
-  release beyond the re-scan issue link. Follow-up: needs the SBOM attestation
-  read at generation time.
+- Scan results for releases other than the newest.
 - Search across images, RSS, a "request an image" form.
 - Slack notifications (separate backlog item).
 
