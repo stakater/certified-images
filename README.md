@@ -34,6 +34,8 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | **Daily re-scan** of published images, one issue per image, automatic fix pull request | Built. The re-scan was run by hand against the three published images (no findings). The scheduled run, the issue and the automatic pull request have **not run yet** |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
+**Catalogue site:** https://stakater.github.io/certified-images/ lists every public image with its releases, evidence and Red Hat status, generated from this repository (story S.1). ⚠️ Live once the pull request that adds it is merged and GitHub Pages has deployed.
+
 Images:
 
 | Image | Upstream | Builds and passes checks | Staging (GHCR) | Red Hat (certified) |
@@ -282,6 +284,7 @@ images/<name>/smoke/*.yaml      # optional fixtures the smoke test deploys first
 images/<name>/smoke/deploy.sh   # optional: the image deploys itself for the smoke test, when one bare pod is not enough
 images/<name>/functional/test.sh # optional test of what the image does, run after the smoke test
 stacks/<name>/                  # images that only work together: the list, and a test that runs them with each other
+site/                           # the public catalogue site's pages; scripts/site-data.sh generates its data
 scripts/                        # one script per pipeline step; the same scripts run locally and in CI
 scripts/templates/              # what new-image.sh scaffolds from
 .claude/skills/                 # add-image and fix-cve procedures for Claude Code
@@ -382,7 +385,7 @@ The full procedure, with what each CI failure means, is in `.claude/skills/add-i
 - **Crossplane (SCO):** install `stakater/<provider>` packages by digest. Air-gapped customers add an `ImageConfig` with `rewriteImage.prefix` to their mirror (Crossplane ≥ 1.20). This path is Proposed (ADR-005).
 
 ## Verify (customers)
-⚠️ **Not run yet.** Nothing is signed until the first publish. These are the commands the first publish must be checked with, from a machine outside CI: first against the staging reference, later against Red Hat's public pull spec. They become documentation only after that.
+Run from outside CI on 2026-11-28 for the seven images published that week: signatures, SBOM attestations and provenance all verify, and an unsigned release correctly fails. **cosign 3 or newer is needed.** The pipeline signs with cosign 3, and cosign 2 reports "no signatures found" for a correctly signed image. The catalogue site shows these commands filled in for each image.
 
 ```
 REF=<registry>/<repository>@sha256:<digest>   # staging: ghcr.io/stakater/ubi/<name>@sha256:...  (log in first if the image's staging is private)
@@ -413,7 +416,7 @@ Still unverified:
 - [ ] **That an image works on OpenShift itself.** The smoke test runs on a local Kubernetes cluster with restricted pod security, which approximates OpenShift's `restricted-v2`. It does not exercise OpenShift's SCC admission, its UID ranges, SELinux or FIPS mode. Level 2 of story P.2b runs the same test on a real OpenShift cluster.
 - [ ] That OpenCost does its job. It has no functional test: producing cost data needs real metrics, which is story P.3. Reloader has one (a ConfigMap change rolls the workload, an unrelated one does not), so far run only on a local cluster, not on OpenShift.
 - [ ] That a Red Hat-hosted image pulls from `registry.connect.redhat.com` once published. The pipeline's part ran on 2026-11-27 (login, copy by digest, signing, submission); publication waits on export approval.
-- [ ] `cosign verify` and `cosign verify-attestation` against a staged image from outside CI. Signing ran in CI without error; only `gh attestation verify` has been run from outside.
+- [x] `cosign verify` and `cosign verify-attestation` against published images from outside CI (2026-11-28, cosign 3.1.5): pass for seven images; cosign 2.6.1 cannot see the signatures.
 - [ ] trivy applies an OpenVEX file passed with `--vex` (marked experimental in trivy 0.76). No image has a VEX file yet, so this path has not run.
 - [ ] Renovate keeps current: the UBI and toolchain digests, the upstream tag and commit (in `image.yaml` and the Containerfile together), and the tool images in `tools.env`. The config validates, but the Renovate app has not run on this repo.
 - [ ] OpenCost's outbound TLS to cloud pricing APIs works in a cluster. The CA bundle is present; no request has been made.

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "PostgreSQL",
+    "version": "18",
+    "address": "registry.access.redhat.com/hi/postgresql",
+    "publisher": "Red Hat Hardened Images",
+    "usedBy": ["multi-tenant-operator"],
+    "status": "Not assessed by our CVE gate",
+    "note": "Used from Red Hat, pinned by digest, instead of a build of ours (ADR-002 rule 1). Our scanner cannot read its packages, so it is recorded as not assessed, never as passing. Tried on 2026-11-28: it runs under restricted pod security with a read-only root filesystem as its own user (UID 999); as an arbitrary UID it also needs a passwd entry for that UID.",
+    "more": "https://github.com/stakater/certified-images/blob/main/docs/roadmap.md"
+  }
+]
