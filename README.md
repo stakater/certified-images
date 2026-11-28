@@ -41,6 +41,10 @@ Images:
 | `opencost` | opencost/opencost | Yes | `ghcr.io/stakater/ubi/opencost`, public by declaration | Submitted 2026-11-27: `v1.121.5-6` is on Red Hat's registry, signed, certification in progress. Not published until export approval; then `registry.connect.redhat.com/stakater/opencost` |
 | `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and listed** in Red Hat's catalog: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ❌ **Not pullable from that address yet**: Red Hat's registry answers "unauthorized" with a valid login ([details](docs/red-hat-distribution.md)) |
 | `dex` | dexidp/dex | Yes | `ghcr.io/stakater/ubi/dex`, public by declaration | No component yet |
+| `crossplane` | crossplane/crossplane (the core and its RBAC manager, not a provider) | Yes, on its pull request (2026-11-27); not merged | Not published. Private by default once merged | No component yet |
+| `etcd-druid` | gardener/etcd-druid (the operator only; the etcd pods it creates use three other images, not built here) | Yes, on its pull request (2026-11-28); not merged | Not published. Private by default once merged | No component yet |
+| `etcd-wrapper` | gardener/etcd-wrapper (the etcd container of etcd-druid's pods) | Yes, on its pull request (2026-11-28); not merged | Not published. Private by default once merged | No component yet |
+| `etcd-backup-restore` | gardener/etcd-backup-restore (`etcdbrctl`, the sidecar of etcd-druid's pods) | Yes, on its pull request (2026-11-28); not merged | Not published. Private by default once merged | No component yet |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 
@@ -272,7 +276,9 @@ images/<name>/Containerfile     # hermetic build stage + parameterised, digest-p
 images/<name>/patches/*.patch   # optional dependency-only patches, each listed under deviations (ADR-002 rule 2)
 images/<name>/vex.openvex.json  # optional CVE exceptions (ADR-008)
 images/<name>/smoke/*.yaml      # optional fixtures the smoke test deploys first
+images/<name>/smoke/deploy.sh   # optional: the image deploys itself for the smoke test, when one bare pod is not enough
 images/<name>/functional/test.sh # optional test of what the image does, run after the smoke test
+stacks/<name>/                  # images that only work together: the list, and a test that runs them with each other
 scripts/                        # one script per pipeline step; the same scripts run locally and in CI
 scripts/templates/              # what new-image.sh scaffolds from
 .claude/skills/                 # add-image and fix-cve procedures for Claude Code

@@ -301,6 +301,29 @@ d=$(fs_image patch-stale v1.0.0 "$SHA1")
 mkdir -p "$d/patches" && make_patch go.mod 'x' | sed 's/go 1.27/go 9.99/' >"$d/patches/0001-stale.patch"
 expect_fail "fetch-source: a patch that does not apply fails" "" scripts/fetch-source.sh "$d" "$TMP/fs/patch-stale/src"
 
+# build.dropVendor (ADR-003 §7): an upstream that commits vendor/ has it
+# removed before the prefetch. v1.2.0 of the throwaway upstream vendors.
+(
+  cd "$UP" || exit 1
+  mkdir -p vendor/example.com/dep
+  printf '# example.com/dep v1.0.0\n' >vendor/modules.txt
+  printf 'package dep\n' >vendor/example.com/dep/dep.go
+  git add . && git commit -q -m vendored
+  git tag v1.2.0
+) >/dev/null 2>&1
+SHA3=$(git -C "$UP" rev-parse 'v1.2.0^{commit}')
+d=$(fs_image vendor-kept v1.2.0 "$SHA3")
+expect_pass "fetch-source: vendor/ is kept when the image does not ask to drop it" \
+  bash -c "scripts/fetch-source.sh '$d' '$TMP/fs/vendor-kept/src' && [ -f '$TMP/fs/vendor-kept/src/vendor/modules.txt' ]"
+d=$(fs_image vendor-dropped v1.2.0 "$SHA3") && printf 'build:\n  dropVendor: true\n' >>"$d/image.yaml"
+expect_pass "fetch-source: build.dropVendor removes upstream's vendor/" \
+  bash -c "scripts/fetch-source.sh '$d' '$TMP/fs/vendor-dropped/src' && [ ! -e '$TMP/fs/vendor-dropped/src/vendor' ]"
+expect_pass "fetch-source: and leaves the rest of the source alone" \
+  bash -c "[ -f '$TMP/fs/vendor-dropped/src/go.mod' ] && [ -f '$TMP/fs/vendor-dropped/src/main.go' ]"
+d=$(fs_image vendor-nothing v1.0.0 "$SHA1") && printf 'build:\n  dropVendor: true\n' >>"$d/image.yaml"
+expect_fail "fetch-source: build.dropVendor with no vendor/ to drop fails" "vendor" \
+  scripts/fetch-source.sh "$d" "$TMP/fs/vendor-nothing/src"
+
 # ------------------------------------------------------------ check-vex.sh
 # NOW pins "today" to 2026-12-01T00:00:00Z so the expiry cases do not rot.
 VEX_NOW=1796083200
@@ -1038,6 +1061,41 @@ expect_pass "functional: the test is given the namespace, pod, image and timeout
 d=$(ft_image notexec 'exit 0') && chmod -x "$d/functional/test.sh"
 expect_fail "functional: a test that is not executable fails, it is not skipped" "not executable" smoke "$d"
 
+# smoke/deploy.sh: an image that cannot be tested as one bare pod (it needs an
+# init step, or its own chart) deploys itself. The smoke test then skips its
+# generic pod and trusts the script's exit status.
+# ft_deploy <case> <deploy.sh body> [functional body]
+ft_deploy() {
+  local dir
+  dir=$(ft_image "$1" "${3:-}")
+  mkdir -p "$dir/smoke"
+  printf '#!/usr/bin/env bash\n%s\n' "$2" >"$dir/smoke/deploy.sh"
+  chmod +x "$dir/smoke/deploy.sh"
+  echo "$dir"
+}
+d=$(ft_deploy deploy-ok 'echo "deployed with its own chart"; exit 0')
+expect_pass "smoke deploy: an image with smoke/deploy.sh is deployed by it" \
+  bash -c "$(declare -f smoke); FT='$FT'; smoke '$d' 2>&1 | grep -q 'deployed with its own chart'"
+expect_pass "smoke deploy: the generic pod is not created" \
+  bash -c "$(declare -f smoke); FT='$FT'; ! smoke '$d' 2>&1 | grep -q 'pod admitted'"
+d=$(ft_deploy deploy-fails 'echo "the chart did not come up" >&2; exit 1')
+expect_fail "smoke deploy: a failing deploy fails the smoke test" "deploy.sh failed" smoke "$d"
+# shellcheck disable=SC2016 # the variables are for the generated script
+d=$(ft_deploy deploy-env '[ -n "$TEST_NAMESPACE" ] && [ "$TEST_IMAGE" = registry.example/img@sha256:abc ] && [ -n "$TEST_TIMEOUT" ] && [ -n "$TEST_RUN_AS_USER" ]')
+expect_pass "smoke deploy: the script is given the namespace, image, timeout and UID" smoke "$d"
+d=$(ft_deploy deploy-then-functional 'exit 0' 'echo "functional test ran"; exit 1')
+expect_fail "smoke deploy: the functional test still runs afterwards and decides" "functional test failed" smoke "$d"
+d=$(ft_deploy deploy-notexec 'exit 0') && chmod -x "$d/smoke/deploy.sh"
+expect_fail "smoke deploy: a deploy.sh that is not executable fails, it is not skipped" "not executable" smoke "$d"
+d=$(ft_deploy deploy-cleanup 'exit 0') && printf '#!/usr/bin/env bash\necho cleaned > "%s/cleanup-ran"\n' "$FT" >"$d/smoke/cleanup.sh" && chmod +x "$d/smoke/cleanup.sh" && rm -f "$FT/cleanup-ran"
+expect_pass "smoke deploy: smoke/cleanup.sh runs afterwards" bash -c "$(declare -f smoke); FT='$FT'; smoke '$d' >/dev/null 2>&1; [ -f '$FT/cleanup-ran' ]"
+
+# rule 14 with a deploy script: port and path are not needed
+dir=$(mutate smoke-deploy-no-port image.yaml '/^smoke:/,/^      mode: test/d') && mkdir -p "$dir/smoke" && printf '#!/usr/bin/env bash\n' >"$dir/smoke/deploy.sh" && chmod +x "$dir/smoke/deploy.sh"
+expect_pass "check-image: with smoke/deploy.sh, smoke.port and smoke.path are not required" scripts/check-image.sh "$dir"
+dir=$(mutate smoke-deploy-notexec image.yaml '/^smoke:/,/^      mode: test/d') && mkdir -p "$dir/smoke" && printf '#!/usr/bin/env bash\n' >"$dir/smoke/deploy.sh"
+expect_fail "check-image: a smoke/deploy.sh that is not executable fails rule 14" "rule 14:" scripts/check-image.sh "$dir"
+
 # rule 17
 dir=$(mutate functional-no-test image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && touch "$dir/functional/notes.txt"
 expect_fail "check-image: functional/ without test.sh fails rule 17" "rule 17:" scripts/check-image.sh "$dir"
@@ -1045,6 +1103,54 @@ dir=$(mutate functional-not-exec image.yaml 's/^consumers: \[\]/consumers: []/')
 expect_fail "check-image: a functional/test.sh that is not executable fails rule 17" "rule 17:" scripts/check-image.sh "$dir"
 dir=$(mutate functional-ok image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && echo '#!/usr/bin/env bash' >"$dir/functional/test.sh" && chmod +x "$dir/functional/test.sh"
 expect_pass "check-image: an executable functional/test.sh passes" scripts/check-image.sh "$dir"
+
+# rule 18: build.dropVendor is a boolean (ADR-003 §7)
+dir=$(mutate drop-vendor-true image.yaml 's/^build:$/build: {dropVendor: true, prefetch: '"'"'{"type": "gomod", "path": "."}'"'"'}/;/^  prefetch:/d')
+expect_pass "check-image: build.dropVendor: true passes" scripts/check-image.sh "$dir"
+dir=$(mutate drop-vendor-word image.yaml 's/^build:$/build: {dropVendor: yes-please, prefetch: '"'"'{"type": "gomod", "path": "."}'"'"'}/;/^  prefetch:/d')
+expect_fail "check-image: build.dropVendor that is not a boolean fails rule 18" "rule 18:" scripts/check-image.sh "$dir"
+
+# ----------------------------------------------------------- stack-test.sh
+# A stack is several of our images run together (story E.1). No builds and no
+# cluster here: the script's own rules, and what it hands to the test.
+# st <case> <images file content> <test.sh body>: a stack directory
+st() {
+  local dir="$TMP/stacks/$1"
+  mkdir -p "$dir"
+  [ -z "$2" ] || printf '%b' "$2" >"$dir/images"
+  if [ -n "$3" ]; then
+    printf '#!/usr/bin/env bash\n%s\n' "$3" >"$dir/test.sh"
+    chmod +x "$dir/test.sh"
+  fi
+  echo "$dir"
+}
+stack() { STACK_SKIP_BUILD=1 STACK_NO_CLUSTER=1 scripts/stack-test.sh "$@"; }
+d=$(st ok '# two images\ndex\nopencost\n' 'exit 0')
+expect_pass "stack-test: a stack whose test passes, passes" stack "$d"
+# shellcheck disable=SC2016 # the variables are for the generated script
+d=$(st env 'dex\nopencost\n' '[ "$TEST_IMAGE_DEX" = localhost/stakater/dex:build ] && [ "$TEST_IMAGE_OPENCOST" = localhost/stakater/opencost:build ] && [ -n "$TEST_SOURCE_DEX" ] && [ -d "$TEST_ROOT/images" ] && [ -n "$TEST_TIMEOUT" ]')
+expect_pass "stack-test: the test is given every image, its source, the repository and a timeout" stack "$d"
+d=$(st fails 'dex\nopencost\n' 'echo "etcd never started" >&2; exit 1')
+expect_fail "stack-test: a failing test fails the stack" "do not work together" stack "$d"
+expect_fail "stack-test: and the test's own explanation is shown" "etcd never started" stack "$d"
+d=$(st no-images '' 'exit 0')
+expect_fail "stack-test: a stack without an images file fails" "images is missing" stack "$d"
+d=$(st unknown 'dex\nno-such-image\n' 'exit 0')
+expect_fail "stack-test: an image that does not exist fails" "no images/no-such-image" stack "$d"
+d=$(st single 'dex\n' 'exit 0')
+expect_fail "stack-test: one image is not a stack" "at least two" stack "$d"
+d=$(st bad-name 'dex\n../opencost\n' 'exit 0')
+expect_fail "stack-test: a line that is not an image name fails" "not an image name" stack "$d"
+d=$(st no-test 'dex\nopencost\n' '')
+expect_fail "stack-test: a stack without test.sh fails, it is not skipped" "test.sh is missing" stack "$d"
+d=$(st notexec 'dex\nopencost\n' 'exit 0') && chmod -x "$d/test.sh"
+expect_fail "stack-test: a test.sh that is not executable fails, it is not skipped" "not executable" stack "$d"
+# Every stack in the repository names real images and has an executable test.
+for sdir in stacks/*/; do
+  [ -d "$sdir" ] || continue
+  expect_pass "stack-test: ${sdir%/} is well formed" bash -c "
+    [ -x '${sdir}test.sh' ] && grep -v '^#' '${sdir}images' | grep . | while read -r i; do [ -f \"images/\$i/image.yaml\" ] || exit 1; done"
+done
 
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }

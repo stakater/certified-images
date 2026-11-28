@@ -46,6 +46,11 @@ In `image.yaml`:
 - `upstream.license`: the SPDX identifier.
 - `tags`: lowercase search terms for the catalog. They become `io.openshift.tags`.
 - `build.prefetch`: `gomod` with the path of the module that holds `go.mod`.
+- If upstream commits a `vendor/` directory and the prefetch rejects it
+  ("vendor changed"), read which files it names. If they are only added
+  files, set `build.dropVendor: true` and say in a comment what Hermeto
+  reported (ADR-003 §7). If a file is modified, stop: upstream edited a
+  vendored dependency, and that needs a person.
 - `test.command`: arguments that make the binary start and exit 0 with no
   network and no config, usually `["--help"]` or `["version"]`.
 - `smoke.port` and `smoke.path`: the port the image serves HTTP on and a path
@@ -57,6 +62,14 @@ In `image.yaml`:
   namespace. See `images/opencost/smoke/` for RBAC and a stub Prometheus.
   Keep fixtures minimal: the test shows the image runs and serves, not that it
   does its job.
+- If it cannot be tested as one bare pod at all (it needs an init step, or
+  several deployments), add an executable `images/<name>/smoke/deploy.sh`
+  instead of `smoke.port` and `smoke.path`. It gets `TEST_NAMESPACE`,
+  `TEST_IMAGE`, `TEST_TIMEOUT`, `TEST_RUN_AS_USER` and `TEST_SOURCE` (the
+  pinned upstream source), must deploy the image under test into that
+  namespace under restricted pod security, and exit 0 only when it is up.
+  An optional `smoke/cleanup.sh` removes what it created outside the
+  namespace. See `images/crossplane/smoke/`, which installs upstream's chart.
 - If the image is a controller or does something observable in a cluster, add
   `images/<name>/functional/test.sh`: an executable that, given
   `TEST_NAMESPACE`, proves the image does its job and exits 0, using only
