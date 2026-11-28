@@ -199,7 +199,7 @@ Rules for working with it:
 ## Layout
 
 ```
-images/<name>/image.yaml       one manifest per image: upstream tag + commit, prefetch, deviations, test command, Red Hat component
+images/<name>/image.yaml       one manifest per image: upstream tag + commit, prefetch (and dropVendor), deviations, test command, Red Hat component
 images/<name>/Containerfile    hermetic build stage + parameterised, digest-pinned UBI runtime stage
 images/<name>/patches/*.patch  optional dependency-only patches, each listed under deviations
 images/<name>/vex.openvex.json optional CVE exceptions
@@ -208,7 +208,7 @@ images/<name>/smoke/deploy.sh  optional: the image deploys itself for the smoke 
 images/<name>/functional/test.sh optional test of what the image does; gets TEST_NAMESPACE, TEST_POD, TEST_IMAGE, TEST_TIMEOUT
 scripts/new-image.sh           scaffolds images/<name>/ from scripts/templates/
 scripts/check-image.sh         our own rules for one image directory
-scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches
+scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches, drops upstream's vendor/ when image.yaml says so
 scripts/prefetch.sh            Hermeto prefetch (the only networked build step)
 scripts/build-image.sh         fetch -> prefetch -> build with the network off
 scripts/test-image.sh          labels, /licenses, non-root, starts

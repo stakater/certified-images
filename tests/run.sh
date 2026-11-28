@@ -301,6 +301,29 @@ d=$(fs_image patch-stale v1.0.0 "$SHA1")
 mkdir -p "$d/patches" && make_patch go.mod 'x' | sed 's/go 1.27/go 9.99/' >"$d/patches/0001-stale.patch"
 expect_fail "fetch-source: a patch that does not apply fails" "" scripts/fetch-source.sh "$d" "$TMP/fs/patch-stale/src"
 
+# build.dropVendor (ADR-003 §7): an upstream that commits vendor/ has it
+# removed before the prefetch. v1.2.0 of the throwaway upstream vendors.
+(
+  cd "$UP" || exit 1
+  mkdir -p vendor/example.com/dep
+  printf '# example.com/dep v1.0.0\n' >vendor/modules.txt
+  printf 'package dep\n' >vendor/example.com/dep/dep.go
+  git add . && git commit -q -m vendored
+  git tag v1.2.0
+) >/dev/null 2>&1
+SHA3=$(git -C "$UP" rev-parse 'v1.2.0^{commit}')
+d=$(fs_image vendor-kept v1.2.0 "$SHA3")
+expect_pass "fetch-source: vendor/ is kept when the image does not ask to drop it" \
+  bash -c "scripts/fetch-source.sh '$d' '$TMP/fs/vendor-kept/src' && [ -f '$TMP/fs/vendor-kept/src/vendor/modules.txt' ]"
+d=$(fs_image vendor-dropped v1.2.0 "$SHA3") && printf 'build:\n  dropVendor: true\n' >>"$d/image.yaml"
+expect_pass "fetch-source: build.dropVendor removes upstream's vendor/" \
+  bash -c "scripts/fetch-source.sh '$d' '$TMP/fs/vendor-dropped/src' && [ ! -e '$TMP/fs/vendor-dropped/src/vendor' ]"
+expect_pass "fetch-source: and leaves the rest of the source alone" \
+  bash -c "[ -f '$TMP/fs/vendor-dropped/src/go.mod' ] && [ -f '$TMP/fs/vendor-dropped/src/main.go' ]"
+d=$(fs_image vendor-nothing v1.0.0 "$SHA1") && printf 'build:\n  dropVendor: true\n' >>"$d/image.yaml"
+expect_fail "fetch-source: build.dropVendor with no vendor/ to drop fails" "vendor" \
+  scripts/fetch-source.sh "$d" "$TMP/fs/vendor-nothing/src"
+
 # ------------------------------------------------------------ check-vex.sh
 # NOW pins "today" to 2026-12-01T00:00:00Z so the expiry cases do not rot.
 VEX_NOW=1796083200
@@ -1080,6 +1103,12 @@ dir=$(mutate functional-not-exec image.yaml 's/^consumers: \[\]/consumers: []/')
 expect_fail "check-image: a functional/test.sh that is not executable fails rule 17" "rule 17:" scripts/check-image.sh "$dir"
 dir=$(mutate functional-ok image.yaml 's/^consumers: \[\]/consumers: []/') && mkdir -p "$dir/functional" && echo '#!/usr/bin/env bash' >"$dir/functional/test.sh" && chmod +x "$dir/functional/test.sh"
 expect_pass "check-image: an executable functional/test.sh passes" scripts/check-image.sh "$dir"
+
+# rule 18: build.dropVendor is a boolean (ADR-003 §7)
+dir=$(mutate drop-vendor-true image.yaml 's/^build:$/build: {dropVendor: true, prefetch: '"'"'{"type": "gomod", "path": "."}'"'"'}/;/^  prefetch:/d')
+expect_pass "check-image: build.dropVendor: true passes" scripts/check-image.sh "$dir"
+dir=$(mutate drop-vendor-word image.yaml 's/^build:$/build: {dropVendor: yes-please, prefetch: '"'"'{"type": "gomod", "path": "."}'"'"'}/;/^  prefetch:/d')
+expect_fail "check-image: build.dropVendor that is not a boolean fails rule 18" "rule 18:" scripts/check-image.sh "$dir"
 
 # ------------------------------------------------------------ verify hook
 hook() { printf '%s' "$1" | VERIFY_CMD="echo VERIFY-RAN" scripts/verify-hook.sh 2>&1; }
