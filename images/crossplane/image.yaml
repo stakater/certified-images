@@ -42,4 +42,4 @@ redhat:
 # Pushed to ghcr.io/stakater/ubi/crossplane, private by default. To make it
 # public, add 'staging: {visibility: public}' in a reviewed PR (ADR-002).
 consumers:
-  - stakater-cloud-orchestrator   # ⚠️ assumed (SCO); confirm the product name
+  - stakater-cloud-orchestrator   # SCO, stated by the owner 2026-11-28
