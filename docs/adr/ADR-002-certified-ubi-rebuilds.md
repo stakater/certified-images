@@ -1,6 +1,6 @@
 # ADR-002: Certified UBI rebuilds of upstream OSS (umbrella)
 
-- **Status:** Accepted (pilot: OpenCost). Revision 9, 2026-11-27. Earlier revisions are in `archive/`.
+- **Status:** Accepted (pilot: OpenCost). Revision 10, 2026-11-28 (rule 1: look in Red Hat Hardened Images first, and hold them to our CVE gate). Earlier revisions are in `archive/`.
 - **Owner:** Rasheed Amir (Stakater), who is also interim factory owner until a factory team is named.
 - **References:** Iron Bank, OpenShift ART, Konflux, Chainguard (see `docs/references.md`).
 
@@ -55,6 +55,11 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
    - (d) a Stakater product deploys it.
 
    Otherwise use the Red Hat image or the customer's own (External mode).
+
+   **Where to look for (a).** Search Red Hat's catalog, and look first in **Red Hat Hardened Images**, `registry.access.redhat.com/hi/<name>`. Red Hat builds them (Project Hummingbird), publishes them without a login or terms to accept, and labels them with the UBI licence and `distribution-scope: public`. On 2026-11-27 the catalog API listed 68 repositories there, among them `postgresql`, `kube-state-metrics`, `prometheus` and `dex`, and none for OpenCost, Crossplane or Reloader. 
+
+   **A Red Hat image must pass our CVE gate, or we build.** Decided by the owner on 2026-11-28. "Red Hat ships one" settles (a) only while that image has no fixable CRITICAL or HIGH finding by our gate (ADR-008), when we pin it and in the daily re-scan afterwards. If it fails and we are able to build the software, we build it and patch it under rule 4. If it fails and we are not able to build it, we use Red Hat's and record the finding as a dated exception, as for our own images.
+   Why: on 2026-11-27 three of the four hardened images we scanned failed the gate (`hi/dex`, `hi/kube-state-metrics`, `hi/prometheus`), each on Go modules at the version upstream pinned. Red Hat's own security data rates the three CVEs involved Important (CVE-2026-78661, CVE-2026-78669, CVE-2026-116587), and fixed module versions had been available since 2026-10-14 and 2026-10-27. The images are rebuilt often (`hi/postgresql` was built 2026-11-26), so the gap is not stale builds. Red Hat does patch dependencies: its kube-state-metrics 2.20.0 carried newer x/crypto, x/text and grpc than upstream pins, and had 2 of the 7 HIGH findings our own build of the same release had before patching (seen 2026-11-28). It was behind on the newest fixes only, by about a month. ⚠️ One day's sample of four images; Red Hat's patch commitment for this line is not known to us.
    **Exit.** Admission is re-checked on every upstream bump. An image that no longer passes is retired: its consumers get a dated notice, and it is patched under rule 4 until that date.
 2. **Build from source** at a pinned commit (ADR-003). Never re-tag upstream binaries.
    **Deviations from upstream.** We build what upstream released, with exactly two allowed deviations, both only to fix a vulnerability covered by rule 4:
@@ -104,7 +109,9 @@ Consumers reference results **by digest** only: CSV `relatedImages` + `RELATED_I
 - ⚠️ Whether a certified operator bundle may reference setup B images has not been tested. They are certified and listed under Red Hat's address, so it should.
 - Confirmed 2026-11-27: the derived username format, `redhat-isv-containers+<componentId>-robot`, logs in, and Red Hat's registry lists tags for a repository that has none yet.
 - ⚠️ That one API key covers every component is Red Hat's documented model and has not yet been exercised by this pipeline; the first publish of a second image confirms it.
-- ⚠️ Whether Red Hat ships a Dex image we are entitled to use as an operand (rule 1a). Check before admitting Dex.
+- Answered 2026-11-27: Red Hat ships a Dex image, `registry.access.redhat.com/hi/dex` (Red Hat Hardened Images), at the same version we build, v2.46.1. Tried at digest `sha256:89603c42…994c6b` on a local kind cluster: it passes our smoke test under restricted pod security and our functional test (discovery, signing keys). Two differences from our build: its entrypoint is `/usr/bin/dex`, so it takes `serve <config>` as arguments, not `dex serve <config>`; and our pinned trivy reports the three fixable HIGH findings in it that our build patches (CVE-2026-116587, CVE-2026-78661, CVE-2026-78669), so at that digest it does not pass our CVE gate. Under rule 1 as revised, our Dex build stays.
+- ⚠️ Whether Red Hat's operator certification accepts `hi/` images as operands of a partner operator has not been asked. They are Red Hat's own images, so it should; ask the partner contact.
+- ⚠️ What support and lifecycle a customer gets for a `hi/` image, and how long a digest stays pullable, is not known. Red Hat's 2025 announcement said the free images are unsupported and that subscribers get support; the general-availability material does not state the terms.
 - The factory team is not named yet. Until it is, the interim owner is the only person who can merge.
 
 Delivery status and the order of the next images are in `docs/roadmap.md`, not here.
