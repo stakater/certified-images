@@ -235,6 +235,7 @@ scripts/rh-registry-login.sh   logs in to Red Hat's registry for a component: de
 scripts/pyxis-probe.sh         what Red Hat's API returns for a component, field names only
 scripts/publish-rehearsal.sh   the registry half of a publish against a local registry
 scripts/changed-images.sh      which images a merge touched
+scripts/notify-slack.sh        tells a Slack channel an image was published; the webhook is the secret SLACK_WEBHOOK_URL
 scripts/site-data.sh           the catalogue site's data: every public image, its releases, evidence and Red Hat status
 site/                          the catalogue site's pages (static; they render site-data's JSON), and external.json for images used from Red Hat
 scripts/rescan-image.sh        scans the newest published release; scan-findings.sh and latest-release.sh support it

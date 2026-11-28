@@ -198,6 +198,24 @@ jobs:
           subject-digest: ${{ steps.stage.outputs.digest }}
           push-to-registry: true
 
+      # Tell the team a release is out (story N.1). It runs after signing and
+      # attesting, so only a complete release is announced. A missing webhook
+      # or a failed post is said in the run, and never fails the release.
+      - name: Notify Slack
+        if: ${{ steps.mode.outputs.stage == 'true' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REF: ${{ steps.stage.outputs.ref }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          rc=0
+          scripts/notify-slack.sh "$(basename "$IMAGE_DIR")" "$TAG" "$REF" || rc=$?
+          if [ "$rc" = 3 ]; then
+            echo "::notice::Slack was not told: the secret SLACK_WEBHOOK_URL is not set (docs/setup.md)."
+          elif [ "$rc" != 0 ]; then
+            echo "::warning::Slack was not told: the notification failed. The release itself is complete."
+          fi
+
       - name: Summary (staged)
         if: ${{ steps.mode.outputs.stage == 'true' }}
         env:

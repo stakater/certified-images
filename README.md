@@ -34,7 +34,7 @@ Stakater builds of upstream OSS, rebuilt from source on Red Hat UBI, certified f
 | **Daily re-scan** of published images, one issue per image, automatic fix pull request | Built. The re-scan was run by hand against the three published images (no findings). The scheduled run, the issue and the automatic pull request have **not run yet** |
 | `CODEOWNERS`, branch protection, Renovate app | Not set up. They need a repository admin |
 
-**Catalogue site:** https://stakater.github.io/certified-images/ lists every public image with its releases, evidence and Red Hat status, generated from this repository (story S.1). ⚠️ Live once the pull request that adds it is merged and GitHub Pages has deployed.
+**Catalogue site:** https://stakater.github.io/certified-images/ lists every public image with its releases, evidence and Red Hat status, generated from this repository (story S.1). Live since 2026-11-28; each image has a page with its container details, releases, signed SBOM, verify commands and a full vulnerability scan.
 
 Images:
 

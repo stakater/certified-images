@@ -30,6 +30,7 @@ an issue or a chat.
 | 7 | Set the component ID in `image.yaml`, merge | Factory team | GitHub | image |
 | 8 | Check the publish run and Partner Connect | Factory team | GitHub, Partner Connect | publish |
 | 9 | Verify from outside CI, record the result | Factory team | Your own machine | first publish |
+| 10 | Add the Slack webhook `SLACK_WEBHOOK_URL`; optionally subscribe the channel to `upstream-bump` pull requests | Slack admin, repo admin | Slack, GitHub | repo |
 
 Steps 6 and 7 can be done in either order. If the component ID is set but
 `RH_PYXIS_TOKEN` or the component's registry key is missing, the run stages
@@ -297,6 +298,32 @@ into ADR-008 and the README.
 
 After that, the consuming product pins the digest in its CSV `relatedImages`
 (story P.3).
+
+## 10. Slack notifications
+
+The publish workflow can post a message to a Slack channel each time a release
+is published and signed (story N.1). It needs one secret.
+
+1. In Slack: create an **incoming webhook** for the channel (Slack → Apps →
+   Incoming Webhooks → Add to Slack, pick the channel). It gives an address
+   that starts with `https://hooks.slack.com/services/`.
+2. In GitHub: Settings → Secrets and variables → Actions → New repository
+   secret, name `SLACK_WEBHOOK_URL`, value that address. Treat it like a
+   password: whoever has it can post to the channel.
+
+Until the secret exists, each publish run has a notice saying Slack was not
+told, and the release is unaffected. To see the message without sending it:
+`scripts/notify-slack.sh --print <image> <tag> <repository@sha256:digest>`.
+
+**New upstream versions.** No code is needed for "a new version was detected":
+Renovate opens a pull request labelled `upstream-bump`. With the GitHub app for
+Slack installed, in the channel:
+
+```
+/github subscribe stakater/certified-images pulls +label:"upstream-bump"
+```
+
+⚠️ Renovate has not opened a pull request on this repository yet (step 2).
 
 ## For the next image
 
