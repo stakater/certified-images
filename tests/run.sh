@@ -1192,6 +1192,19 @@ expect_pass "site-data: offline, no release is listed and none is marked verifie
 expect_pass "site-data: the stacks an image is in are named" sdq '.images[] | select(.name=="pub") | .stacks == ["pair"]'
 expect_pass "site-data: images used from elsewhere are carried over" sdq '.external[0].name == "external-db"'
 expect_pass "site-data: it says when and from what it was generated" sdq '(.generated | test("^20[0-9]{2}-")) and (.offline == true)'
+# Details per image (container configuration, SBOM, scan, signature). Offline
+# none of it can be read, and the site must say so, not show an empty result.
+expect_pass "site-data: every listed image has a details file" \
+  bash -c "[ -f '$SD/out/details/pub.json' ] && [ -f '$SD/out/details/listed.json' ] && [ ! -e '$SD/out/details/priv.json' ]"
+sdd() { jq -e "$1" "$SD/out/details/pub.json" >/dev/null; }
+expect_pass "site-data: offline, the scan is unknown and carries no counts, not zero findings" \
+  sdd '.scan.status == "unknown" and (.scan | has("total") | not) and (.scan.findings == null)'
+expect_pass "site-data: offline, the SBOM is unknown, not an empty package list" \
+  sdd '.sbom.status == "unknown" and (.sbom.packages == null)'
+expect_pass "site-data: offline, the signature is unknown, never verified" sdd '.signature == "unknown"'
+expect_pass "site-data: offline, the container configuration is absent" sdd '.container == null'
+expect_pass "site-data: the catalogue carries the scan summary of each image, unknown offline" \
+  sdq '[.images[].scan.status] == ["unknown","unknown"] and ([.images[].scan | has("total")] | any | not)'
 mkdir -p "$SD/broken/images/bad" "$SD/broken/out" && printf 'kind: container\nname: [unclosed\n' >"$SD/broken/images/bad/image.yaml"
 expect_fail "site-data: a manifest that cannot be read fails, the image is not skipped" "bad" \
   env SITE_OFFLINE=1 SITE_IMAGES_DIR="$SD/broken/images" SITE_STACKS_DIR="$SD/stacks" SITE_EXTERNAL="$SD/external.json" scripts/site-data.sh "$SD/broken/out"

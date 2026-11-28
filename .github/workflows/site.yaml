@@ -47,7 +47,7 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60 # ten images: signatures, signed SBOMs and a full scan each
     permissions:
       contents: read
       issues: read # the daily re-scan's open findings
@@ -65,9 +65,9 @@ jobs:
           {
             echo "### Catalogue site"
             echo
-            echo "| Image | Latest release | Provenance | Red Hat |"
-            echo "|---|---|---|---|"
-            jq -r '.images[] | "| \(.name) | \(.releases[0].tag // "none") | \(.releases[0].provenance // "-") | \(.redhat.status) |"' _site/catalog.json
+            echo "| Image | Latest release | Provenance | Signature | Scan | Red Hat |"
+            echo "|---|---|---|---|---|---|"
+            jq -r '.images[] | "| \(.name) | \(.releases[0].tag // "none") | \(.releases[0].provenance // "-") | \(.signature) | \(.scan.status) \(.scan.total // "") | \(.redhat.status) |"' _site/catalog.json
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Keep the built site (pull requests)
         if: ${{ github.event_name == 'pull_request' }}
