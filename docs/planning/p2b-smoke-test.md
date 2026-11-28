@@ -57,6 +57,16 @@ smoke:
 Optional `images/<name>/smoke/*.yaml`: extra manifests applied to the test
 namespace first (RBAC, a stub dependency).
 
+Optional `images/<name>/smoke/deploy.sh` (added 2026-11-27 for Crossplane, which
+needs an init step and two deployments): the image deploys itself and the
+generic pod is skipped. `smoke.port` and `smoke.path` are then not required.
+The script gets `TEST_NAMESPACE`, `TEST_IMAGE`, `TEST_TIMEOUT`,
+`TEST_RUN_AS_USER` and `TEST_SOURCE` (the pinned upstream source left by the
+build in `.ctx/<name>/src`); its exit status decides. The namespace still
+enforces restricted pod security, so the script cannot relax it. An optional
+`smoke/cleanup.sh` runs last. Crossplane's script needs `helm` on the machine,
+like `kind` and `kubectl`; it is not pinned in `tools.env`.
+
 | Path | What |
 |---|---|
 | `scripts/smoke-test.sh <image-ref> <images/name>` | against the current kubeconfig: create a namespace enforcing `restricted`, apply extras, run the pod, wait for Ready, request the path through the API server, require zero restarts, clean up. `--render` prints the pod manifest and exits |

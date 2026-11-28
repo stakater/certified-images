@@ -154,15 +154,20 @@ esac
 
 # rule 14: a smoke test, so the image is run as a pod and asked to serve
 # (scripts/smoke-test.sh). Starting with --help proves very little.
-smoke_port=$(get .smoke.port)
-smoke_path=$(get .smoke.path)
-if ! [[ "$smoke_port" =~ ^[0-9]+$ ]] || [ "$smoke_port" -lt 1 ] || [ "$smoke_port" -gt 65535 ]; then
-  err 14 "smoke.port must be the port the image serves HTTP on (1-65535), got '$smoke_port'"
+# An image with smoke/deploy.sh deploys itself and needs no port or path.
+if [ -e "$DIR/smoke/deploy.sh" ]; then
+  [ -x "$DIR/smoke/deploy.sh" ] || err 14 "smoke/deploy.sh is not executable"
+else
+  smoke_port=$(get .smoke.port)
+  smoke_path=$(get .smoke.path)
+  if ! [[ "$smoke_port" =~ ^[0-9]+$ ]] || [ "$smoke_port" -lt 1 ] || [ "$smoke_port" -gt 65535 ]; then
+    err 14 "smoke.port must be the port the image serves HTTP on (1-65535), got '$smoke_port'"
+  fi
+  if ! printf '%s' "$JSON" | jq -e '(.smoke.files // {}) | type == "object" and all(to_entries[]; (.key | startswith("/")) and (.value | type == "string"))' >/dev/null; then
+    err 14 "smoke.files must map absolute paths to file contents"
+  fi
+  [[ "$smoke_path" == /* ]] || err 14 "smoke.path must be an HTTP path that answers 2xx when the image is healthy (starting with /), got '$smoke_path'"
 fi
-if ! printf '%s' "$JSON" | jq -e '(.smoke.files // {}) | type == "object" and all(to_entries[]; (.key | startswith("/")) and (.value | type == "string"))' >/dev/null; then
-  err 14 "smoke.files must map absolute paths to file contents"
-fi
-[[ "$smoke_path" == /* ]] || err 14 "smoke.path must be an HTTP path that answers 2xx when the image is healthy (starting with /), got '$smoke_path'"
 
 # rule 15: the label policy (ADR-009). The Containerfile must set every label
 # the policy lists, or the image inherits the base's; and image.yaml must give
@@ -197,6 +202,12 @@ if [ -d "$DIR/functional" ]; then
   elif [ ! -x "$DIR/functional/test.sh" ]; then
     err 17 "functional/test.sh is not executable"
   fi
+fi
+
+# rule 18: build.dropVendor, when present, is a boolean (ADR-003 §7). A typo
+# would otherwise be read as "do not drop" and the prefetch would fail later.
+if ! printf '%s' "$JSON" | jq -e '(.build // {}) | (has("dropVendor") | not) or (.dropVendor | type == "boolean")' >/dev/null; then
+  err 18 "build.dropVendor must be true or false, got '$(get .build.dropVendor)'"
 fi
 
 [ "$errors" -eq 0 ] || exit 1

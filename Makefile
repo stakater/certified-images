@@ -13,7 +13,7 @@ export HADOLINT_IMAGE SHELLCHECK_IMAGE ACTIONLINT_IMAGE RENOVATE_IMAGE YQ_IMAGE 
 
 # What each target checks. Tests override these to point at broken fixtures.
 CONTAINERFILES  ?= $(wildcard images/*/Containerfile)
-SHELL_SCRIPTS   ?= $(wildcard scripts/*.sh tests/*.sh images/*/functional/*.sh)
+SHELL_SCRIPTS   ?= $(wildcard scripts/*.sh tests/*.sh images/*/functional/*.sh images/*/smoke/*.sh stacks/*/test.sh)
 WORKFLOWS       ?= $(wildcard .github/workflows/*.yaml .github/workflows/*.yml)
 RENOVATE_CONFIG ?= renovate.json
 IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
@@ -21,7 +21,7 @@ IMAGE_DIRS      ?= $(patsubst %/,%,$(wildcard images/*/))
 RUN = $(ENGINE) run --rm -v "$(CURDIR)":/work:ro -w /work
 
 .PHONY: verify lint lint-containerfiles lint-shell lint-workflows check-renovate check-images test \
-	build test-image scan preflight image test-hermetic publish-rehearsal smoke test-smoke
+	build test-image scan preflight image test-hermetic publish-rehearsal smoke test-smoke stack
 
 verify: lint check-renovate check-images test ## run every check
 	@echo "verify: all checks passed"
@@ -72,6 +72,14 @@ test-image: ## labels, /licenses, non-root, starts
 
 smoke: ## run the image as a pod on a throwaway local cluster under restricted pod security
 	ENGINE=$(ENGINE) scripts/smoke-kind.sh $(REF) $(IMAGE_DIR)
+
+# A stack: images that only work together, built and run with each other.
+#   make stack STACK=etcd
+STACK     ?= etcd
+STACK_DIR ?= stacks/$(STACK)
+
+stack: ## build a stack's images and run them together on a throwaway local cluster
+	ENGINE=$(ENGINE) scripts/stack-test.sh $(STACK_DIR)
 
 test-smoke: ## prove the smoke test rejects images that do not work
 	ENGINE=$(ENGINE) scripts/test-smoke.sh

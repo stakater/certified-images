@@ -158,6 +158,7 @@ levels need a build, so they run in CI and locally with `make image IMAGE=<name>
 | Image | The built image has the required labels, `/licenses`, non-root user, and starts as an arbitrary UID | `scripts/test-image.sh`, `scripts/preflight-dry-run.sh` |
 | Cluster | The image runs as a pod under restricted pod security (arbitrary UID, read-only root, no capabilities), becomes Ready and serves. On a local kind cluster this approximates OpenShift; it is not OpenShift | `scripts/smoke-test.sh`, `make smoke`, `make test-smoke` |
 | Functional | What the image does, not just that it starts. Optional, per image: `functional/test.sh` runs against the running image and its exit status decides. The same test runs wherever the pipeline has a cluster | `images/<name>/functional/test.sh`, run by `scripts/smoke-test.sh` |
+| Stack | Images that only work together are built from the same checkout and run with each other, not with upstream's builds of their peers | `stacks/<name>/images`, `stacks/<name>/test.sh`, run by `scripts/stack-test.sh`, `make stack STACK=<name>` |
 | End to end | A PR run goes prefetch → offline build → SBOM → CVE gate → preflight → publish rehearsal against a local registry; a separate job proves builds cannot reach the network | `build-certify.yaml`, `make test-hermetic` |
 
 Rules for working with it:
@@ -199,15 +200,17 @@ Rules for working with it:
 ## Layout
 
 ```
-images/<name>/image.yaml       one manifest per image: upstream tag + commit, prefetch, deviations, test command, Red Hat component
+images/<name>/image.yaml       one manifest per image: upstream tag + commit, prefetch (and dropVendor), deviations, test command, Red Hat component
 images/<name>/Containerfile    hermetic build stage + parameterised, digest-pinned UBI runtime stage
 images/<name>/patches/*.patch  optional dependency-only patches, each listed under deviations
 images/<name>/vex.openvex.json optional CVE exceptions
 images/<name>/smoke/*.yaml     optional fixtures the smoke test deploys first (RBAC, a stub dependency)
+images/<name>/smoke/deploy.sh  optional: the image deploys itself for the smoke test (it needs an init step or its own chart); cleanup.sh undoes it
 images/<name>/functional/test.sh optional test of what the image does; gets TEST_NAMESPACE, TEST_POD, TEST_IMAGE, TEST_TIMEOUT
+stacks/<name>/images, test.sh  images that only work together, and the test that runs them with each other
 scripts/new-image.sh           scaffolds images/<name>/ from scripts/templates/
 scripts/check-image.sh         our own rules for one image directory
-scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches
+scripts/fetch-source.sh        pinned commit, moved-tag check, dependency-only patches, drops upstream's vendor/ when image.yaml says so
 scripts/prefetch.sh            Hermeto prefetch (the only networked build step)
 scripts/build-image.sh         fetch -> prefetch -> build with the network off
 scripts/test-image.sh          labels, /licenses, non-root, starts
@@ -217,6 +220,7 @@ scripts/preflight-dry-run.sh   Red Hat certification checks, nothing submitted
 scripts/test-hermetic.sh       proves a build step cannot reach the network
 scripts/smoke-test.sh          runs the image as a pod under restricted pod security and asks it to serve
 scripts/smoke-kind.sh          the same on a throwaway kind cluster; test-smoke.sh proves it can fail
+scripts/stack-test.sh          builds the images of a stack and runs them together on a throwaway kind cluster
 scripts/publish-plan.sh        staging repository, and whether and where to publish at Red Hat
 scripts/next-release.sh        next <version>-<release> number; list-tags.sh reads the registry
 scripts/push-image.sh          pushes and prints the digest reference; assert-tag-free.sh refuses an existing tag

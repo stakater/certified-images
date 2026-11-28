@@ -59,7 +59,13 @@ git -C "$work/src" diff -- go.mod go.sum >"$PATCH"
   echo "fix-go-deps: the bumps changed nothing; is upstream already at these versions?" >&2
   exit 1
 }
-others=$(git -C "$work/src" status --porcelain | grep -vE '^ M (go\.mod|go\.sum)$' || true)
+# An image that drops upstream's vendor/ (build.dropVendor, ADR-003 §7) has
+# those files deleted by fetch-source.sh, not by go get. They are not part of
+# the patch and are not a change this script made.
+drop_vendor=$("$ROOT/scripts/yaml-to-json.sh" "$DIR/image.yaml" | jq -r '.build.dropVendor // false')
+ignore='^ M (go\.mod|go\.sum)$'
+[ "$drop_vendor" != "true" ] || ignore='^ M (go\.mod|go\.sum)$|^ D vendor/'
+others=$(git -C "$work/src" status --porcelain | grep -vE "$ignore" || true)
 [ -z "$others" ] || {
   echo "fix-go-deps: go get changed files other than go.mod and go.sum:" >&2
   printf '%s\n' "$others" >&2
