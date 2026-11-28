@@ -42,6 +42,7 @@ Images:
 | `reloader-operator` | stakater/Reloader, **v2 only** (pinned to a beta; v2 has no final release yet) | Yes | `ghcr.io/stakater/ubi/reloader-operator`, public by declaration. (Two earlier releases sit under the old name, `ubi/reloader`) | **Certified and listed** in Red Hat's catalog: `registry.connect.redhat.com/stakater/reloader-operator`, tag `v2.0.0-beta.3-2`, health grade A (2026-11-27). ❌ **Not pullable from that address yet**: Red Hat's registry answers "unauthorized" with a valid login ([details](docs/red-hat-distribution.md)) |
 | `dex` | dexidp/dex | Yes | `ghcr.io/stakater/ubi/dex`, public by declaration | No component yet |
 | `crossplane` | crossplane/crossplane (the core and its RBAC manager, not a provider) | ⚠️ Not yet seen: first build is the pull request that adds it | Not published. Private by default once merged | No component yet |
+| `kcp` | kcp-dev/kcp (server, front proxy, virtual workspaces, cache server; no kubectl) | ⚠️ Not yet seen: first build is the pull request that adds it | Not published. Private by default once merged | No component yet |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 
