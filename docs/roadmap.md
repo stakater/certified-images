@@ -210,7 +210,12 @@ mirror, so that showback works without internet access.*
   - **Dex:** keep our build. `hi/dex` 2.46.1 has 3 HIGH (the three our build patches); it passes our smoke and functional tests.
   - **kube-state-metrics:** build ours: `images/kube-state-metrics`, published 2026-11-28. `hi/kube-state-metrics` 2.20.0 had 2 HIGH in `golang.org/x/net`; upstream's own pins carry 7, so Red Hat does patch dependencies and was behind on the newest.
   - **Prometheus:** build ours: `images/prometheus` (story P.1b), with its web UI built from source. `hi/prometheus` 3.13.5 had 1 HIGH in `golang.org/x/net`.
-  - **PostgreSQL:** use `registry.access.redhat.com/hi/postgresql`, by digest. No finding reported, but ⚠️ trivy could not identify the operating system of the `hi/` images and checked only Go binaries, which PostgreSQL does not have. A scan that covers it is needed before "passes our gate" can be said of it.
+  - **PostgreSQL:** use `registry.access.redhat.com/hi/postgresql`, by digest. Decided by the owner on 2026-11-28, for now; we do not build it (ADR-002 rev 11).
+    - **Not assessed by our gate.** Trivy does not recognise the image's operating system, from the image or from Red Hat's own SBOM, so nothing in it was checked. It is not "passing".
+    - Tried 2026-11-28 (18.7, upstream's latest release, image built that day; local kind cluster, arm64): under restricted pod security as an arbitrary UID in group 0 with no capabilities, it started, accepted a write and returned the row, with no restarts. It also runs as its own user (UID 999).
+    - **It needs a writable root filesystem.** With `readOnlyRootFilesystem: true` it exits at start-up: its entrypoint adds the arbitrary UID to `/etc/passwd`. MTO's deployment must not set that, and needs volumes for `/var/lib/postgresql` (data) and `/var/run/postgresql`.
+    - Why not ours: it fails admission (a); its licence is the PostgreSQL License, permissive but not on our named list, so it would need sign-off; and a PostgreSQL we compile would be invisible to our own gate. Building C software with RPM dependencies would also be a story of its own.
+    - ⚠️ Not run on OpenShift. ⚠️ Only the default configuration was run: no replication, no TLS, no extensions.
   - ⚠️ None of the `hi/` images has been run on OpenShift by us; only Dex was run at all. ⚠️ Operand acceptance and support terms are open questions in ADR-002.
 - Add the Red Hat images our products consume to the daily re-scan, so a pass or a failure of the gate is noticed (ADR-002 rule 1, rev 10).
 - Report the three findings to Red Hat's Hummingbird project (its source is public). A human step.
