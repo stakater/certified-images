@@ -50,9 +50,16 @@ the risk is in ADR-003's Consequences.
   the boolean `true` or `false`.
 - Containerfiles of such images build without `-mod vendor`; with no `vendor/`
   Go reads the Hermeto module cache, as in every other image.
+- `scripts/fix-go-deps.sh` (found on the first CVE fix for these images,
+  2026-11-28): it calls `fetch-source.sh` and so gets a tree without `vendor/`,
+  which is what `go get` needs, but it then refused to write the patch because
+  git reports the dropped vendor files as deleted. For an image with
+  `build.dropVendor`, it now ignores deletions under `vendor/`; the patch
+  itself is still `go.mod` and `go.sum` only. This script has no unit test (it
+  runs `go get` against the network); checked by generating the two images'
+  patches with it.
 - NOT changing: `scripts/prefetch.sh`, the Hermeto invocation and its mode, the
-  patch rules, `scripts/fix-go-deps.sh` (it calls `fetch-source.sh` and so gets
-  a tree without `vendor/`, which is what `go get` needs).
+  patch rules.
 
 ## Checks (red first)
 
