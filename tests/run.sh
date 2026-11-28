@@ -453,6 +453,31 @@ expect_pass "rh-component-info: the API key is not passed on curl's command line
   bash -c "$(declare -f rh info); RH='$RH' CID=$CID; info 200 '$B_BODY' >/dev/null 2>&1; ! grep -q INFOSECRET '$RH/log/curl.args'"
 expect_fail "rh-component-info: refuses to run without the API key" "RH_PYXIS_TOKEN" rh scripts/rh-component-info.sh "$CID"
 
+# notify-slack.sh: tells a Slack channel an image was published (story N.1).
+# The webhook address is a secret: whoever has it can post to the channel.
+HOOK=https://hooks.slack.com/services/T000/B000/HOOKSECRETPART
+REF_=ghcr.io/stakater/ubi/example@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+notify() { rh env SLACK_WEBHOOK_URL="$1" STUB_CODE="$2" STUB_BODY=ok scripts/notify-slack.sh example v1.2.3-4 "$REF_"; }
+expect_pass "notify-slack: posts when Slack answers 200" notify "$HOOK" 200
+expect_pass "notify-slack: the webhook address is not passed on curl's command line" \
+  bash -c "$(declare -f rh notify); RH='$RH' REF_='$REF_'; notify '$HOOK' 200 >/dev/null 2>&1; ! grep -q HOOKSECRETPART '$RH/log/curl.args'"
+expect_pass "notify-slack: never prints the webhook address" \
+  bash -c "$(declare -f rh notify); RH='$RH' REF_='$REF_'; ! notify '$HOOK' 200 2>&1 | grep -q HOOKSECRETPART"
+expect_fail "notify-slack: an answer other than 200 fails" "HTTP 404" notify "$HOOK" 404
+expect_fail "notify-slack: an address that is not a Slack webhook is refused" "not a Slack" notify "https://example.com/hook" 200
+expect_pass "notify-slack: and it is not printed when refused" \
+  bash -c "$(declare -f rh notify); RH='$RH' REF_='$REF_'; ! notify 'https://example.com/REFUSEDSECRET' 200 2>&1 | grep -q REFUSEDSECRET"
+notify_rc() { local rc=0; notify "$1" 200 >/dev/null 2>&1 || rc=$?; [ "$rc" = "$2" ]; }
+expect_pass "notify-slack: no webhook configured exits 3 (not sent, not a failure)" notify_rc "" 3
+expect_pass "notify-slack: and says a person must add the secret" \
+  bash -c "$(declare -f rh notify); RH='$RH' REF_='$REF_'; notify '' 200 2>&1 | grep -q SLACK_WEBHOOK_URL"
+payload() { scripts/notify-slack.sh --print example v1.2.3-4 "$REF_"; }
+expect_pass "notify-slack: the message names the image, the release and the digest reference" \
+  bash -c "$(declare -f payload); REF_='$REF_'; payload | jq -e '.text | (contains(\"example\") and contains(\"v1.2.3-4\") and contains(\"$REF_\"))' >/dev/null"
+expect_pass "notify-slack: the message links the image's page on the catalogue site" \
+  bash -c "$(declare -f payload); REF_='$REF_'; payload | jq -e '.text | contains(\"https://stakater.github.io/certified-images/image.html?name=example\")' >/dev/null"
+expect_fail "notify-slack: a reference that is not by digest is refused" "digest" scripts/notify-slack.sh --print example v1.2.3-4 ghcr.io/stakater/ubi/example:v1.2.3-4
+
 # pyxis-probe.sh: shows what the API returns, never the values.
 probe_out() { rh env RH_PYXIS_TOKEN=tok-PROBESECRET STUB_CODE="$1" STUB_BODY="$2" scripts/pyxis-probe.sh "$CID" 2>&1; }
 BODY='{"registry_credentials":{"username":"robot-user","password":"hunter2-SECRETVALUE"},"_id":"x"}'
