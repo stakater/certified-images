@@ -157,7 +157,7 @@ cosign() { "$ENGINE" run --rm "$COSIGN_IMAGE" "$@" --certificate-identity-regexp
 # for the catalogue. Whatever cannot be read stays "unknown" with no numbers:
 # an unread scan must never look like a clean one.
 details() {
-  local name=$1 repo=$2 digest=$3 ref n kind tool count files
+  local name=$1 repo=$2 digest=$3 ref n total kind tool count files
   local container=null signature=unknown
   local sbom='{"status":"unknown","packages":null,"files":[]}'
   local scan='{"status":"unknown","findings":null}'
@@ -183,7 +183,8 @@ details() {
     if cosign verify-attestation --type spdxjson "$ref" >"$work/att.jsonl" 2>/dev/null && [ -s "$work/att.jsonl" ]; then
       files='[]'
       n=0
-      while IFS= read -r _; do
+      total=$(grep -c . "$work/att.jsonl")
+      while [ "$n" -lt "$total" ]; do
         n=$((n + 1))
         sed -n "${n}p" "$work/att.jsonl" |
           jq -c '.payload | @base64d | fromjson | .predicate | if type == "string" then fromjson else . end' >"$work/spdx.json" 2>/dev/null || continue
@@ -193,7 +194,7 @@ details() {
         cp "$work/spdx.json" "$OUT/sbom/$name.$kind.spdx.json"
         files=$(printf '%s' "$files" | jq -c --arg kind "$kind" --arg file "sbom/$name.$kind.spdx.json" --arg tool "$tool" --argjson n "$count" \
           'map(select(.kind != $kind)) + [{kind: $kind, file: $file, tool: $tool, packages: $n}]')
-      done <"$work/att.jsonl"
+      done
       if [ -f "$OUT/sbom/$name.image.spdx.json" ]; then
         sbom=$(jq -c --argjson files "$files" '
           { status: "verified", files: $files,
