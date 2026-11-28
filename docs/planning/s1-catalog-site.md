@@ -64,7 +64,7 @@ render it in the browser.
 - `site/index.html`, `site/image.html`, `site/app.js`, `site/style.css`: the
   catalogue and one page per image (`image.html?name=<name>`), with sections
   Overview, Get started, Security, Checks, Releases, Source and build.
-- `make site` writes `.site/` (data plus pages), viewable by opening the file
+- `make site` writes `_site/` (data plus pages), viewable by opening the file
   through any static server.
 - `.github/workflows/site.yaml`: builds on pull requests (uploaded as an
   artifact, not deployed); builds and deploys to GitHub Pages on a push to

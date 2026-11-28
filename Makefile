@@ -83,10 +83,10 @@ stack: ## build a stack's images and run them together on a throwaway local clus
 
 # The public catalogue site (story S.1): the data, read from this checkout,
 # the registry, GitHub and Red Hat's catalogue, plus the static pages.
-#   make site            # then serve .site/ with any static file server
-SITE_OUT ?= .site
+#   make site            # then serve _site/ with any static file server
+SITE_OUT ?= _site
 
-site: ## generate the catalogue site into .site/
+site: ## generate the catalogue site into _site/
 	@rm -rf "$(SITE_OUT)" && mkdir -p "$(SITE_OUT)"
 	cp site/index.html site/image.html site/app.js site/style.css "$(SITE_OUT)/"
 	ENGINE=$(ENGINE) scripts/site-data.sh "$(SITE_OUT)"
