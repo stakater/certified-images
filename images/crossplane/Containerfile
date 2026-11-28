@@ -1,0 +1,98 @@
+# Stakater build of Crossplane (core and RBAC manager): rebuilt from upstream source on Red Hat UBI.
+# Hermetic (ADR-003): scripts/build-image.sh fetches the pinned commit into ./src,
+# Hermeto-prefetches Go modules into ./hermeto-output, then builds with the network off.
+# Base images are parameterised and digest-pinned (ADR-004).
+
+# Build-stage toolchain: not shipped, pinned by digest all the same (ADR-004).
+# Upstream's go.mod says go 1.26.7.
+# renovate: datasource=docker depName=docker.io/library/golang
+ARG GO_TAG=1.26.10@sha256:cfa27959837144bf4649802ba38e59daffd0dd2a7994aa83daaf113285b0f551
+ARG BASE_REGISTRY=registry.access.redhat.com
+ARG BASE_IMAGE=ubi9/ubi-minimal
+# renovate: datasource=docker depName=registry.access.redhat.com/ubi9/ubi-minimal
+ARG BASE_TAG=latest@sha256:08d4c70f1baf6537a0728656cf7942d561e74a35916509d205b6519861266352
+
+########## build stage (not shipped) ##########
+FROM docker.io/library/golang:${GO_TAG} AS build
+# renovate: datasource=github-tags depName=crossplane/crossplane
+ARG UPSTREAM_VERSION=v2.5.0
+ARG UPSTREAM_COMMIT=90f0698999e9537bc59774f1d9ba541ce112ba55
+COPY src/ /src/
+COPY hermeto-output/ /tmp/hermeto-output/
+COPY hermeto.env /tmp/hermeto.env
+WORKDIR /src
+# No network here: modules come from the Hermeto cache (GOPROXY/GOMODCACHE set by hermeto.env).
+RUN . /tmp/hermeto.env && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+      -ldflags "-s -w \
+        -X github.com/crossplane/crossplane-runtime/v2/pkg/version.version=${UPSTREAM_VERSION}" \
+      -o /out/crossplane ./cmd/crossplane
+
+########## runtime stage (certified) ##########
+FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
+
+# renovate: datasource=github-tags depName=crossplane/crossplane
+ARG UPSTREAM_VERSION=v2.5.0
+ARG UPSTREAM_COMMIT=90f0698999e9537bc59774f1d9ba541ce112ba55
+ARG RELEASE=0
+# Set by scripts/build-image.sh (ADR-009): the commit of this repository that
+# built the image, when, and the digest of the base it sits on.
+ARG VCS_REF=unknown
+ARG BUILD_DATE=1970-01-01T00:00:00Z
+ARG BASE_DIGEST=unknown
+# Declared before the first FROM; repeated here so the labels can use them.
+ARG BASE_REGISTRY
+ARG BASE_IMAGE
+
+# Labels (ADR-009). scripts/check-labels.sh checks every one against image.yaml
+# and the build. Without them the image would inherit UBI's build date, commit,
+# URL and tags.
+LABEL name="stakater/crossplane" \
+      vendor="Stakater AB" \
+      maintainer="Stakater AB <support@stakater.com>" \
+      version="${UPSTREAM_VERSION}" \
+      release="${RELEASE}" \
+      summary="Crossplane control plane rebuilt from source on Red Hat UBI" \
+      description="Crossplane is a control plane framework for Kubernetes: it installs providers and functions and reconciles the resources they define. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image." \
+      io.k8s.display-name="Stakater build of Crossplane" \
+      io.k8s.description="Crossplane is a control plane framework for Kubernetes: it installs providers and functions and reconciles the resources they define. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image." \
+      io.openshift.tags="crossplane,control-plane,infrastructure,kubernetes" \
+      org.opencontainers.image.title="Stakater build of Crossplane" \
+      org.opencontainers.image.description="Crossplane is a control plane framework for Kubernetes: it installs providers and functions and reconciles the resources they define. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image." \
+      org.opencontainers.image.vendor="Stakater AB" \
+      org.opencontainers.image.version="${UPSTREAM_VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/stakater/certified-images" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.url="https://github.com/stakater/certified-images/tree/main/images/crossplane" \
+      org.opencontainers.image.base.name="${BASE_REGISTRY}/${BASE_IMAGE}" \
+      org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+      vcs-ref="${VCS_REF}" \
+      vcs-type="git" \
+      build-date="${BUILD_DATE}" \
+      url="https://github.com/stakater/certified-images/tree/main/images/crossplane" \
+      com.stakater.upstream.repo="https://github.com/crossplane/crossplane" \
+      com.stakater.upstream.version="${UPSTREAM_VERSION}" \
+      com.stakater.upstream.commit="${UPSTREAM_COMMIT}"
+
+# No package installs or updates here: the build has no network. OS fixes
+# arrive through Renovate base-digest bumps (ADR-003 §5, ADR-004).
+
+# Red Hat certification: /licenses (HasLicense). Keep upstream's licence files.
+# Upstream ships LICENSE only.
+COPY --from=build /src/LICENSE /licenses/LICENSE
+
+COPY --from=build --chown=1001:0 --chmod=0555 /out/crossplane /usr/local/bin/crossplane
+# `crossplane core init` installs Crossplane's own CRDs and webhook
+# configurations from these two directories, as in upstream's image.
+COPY --from=build --chown=1001:0 /src/cluster/crds/ /crds/
+COPY --from=build --chown=1001:0 /src/cluster/webhookconfigurations/ /webhookconfigurations/
+
+# Health on 8081, metrics on 8080, webhooks on 9443.
+EXPOSE 8080 8081 9443
+
+# Non-root, and usable under an arbitrary UID in group 0 (OpenShift).
+USER 1001
+
+ENTRYPOINT ["/usr/local/bin/crossplane"]
