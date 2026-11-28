@@ -90,9 +90,21 @@ Then read its first "Dependency Dashboard" issue and check that it lists:
 - each image's upstream version (in `image.yaml` and the Containerfile);
 - the tool images in `tools.env`.
 
-⚠️ The Renovate config validates but has never run. If one of these is missing
-from the dashboard, a regex manager in `renovate.json` does not match; open an
-issue with what is missing.
+The config was run locally in report-only mode on 2026-11-28, with the
+Renovate version pinned in `tools.env`
+(`renovate --platform=local --report-type=file`). It found 124 pins: in every
+image the UBI base digest, the Go toolchain digest and the upstream version
+(in `image.yaml` and twice in the Containerfile); Node and pnpm for Prometheus;
+all thirteen tool images in `tools.env`; and every pinned action in the
+workflows. It offered updates for the Go toolchain, Node (within 24), Hermeto,
+cosign, the kind node image and Renovate itself, and none for pnpm, which is
+held below 12.
+
+⚠️ Still not seen: the hosted app running on this repository, so no pull
+request, no automerge and no Dependency Dashboard. And whether a **new
+upstream release** is detected: those lookups need a GitHub token, which the
+local run did not have, so they were skipped. The app has one. If the dashboard
+misses something the local run found, open an issue with what is missing.
 
 ## 2a. Let the re-scan open pull requests
 
