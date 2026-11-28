@@ -65,6 +65,19 @@ without loosening the prefetch.*
   `go.sum` as for any image; a declaration with nothing to drop fails;
   `etcd-wrapper` and `etcd-backup-restore` build in CI.
 
+**Story E.1 — images that only work together are run together** 🔨 *(approved 2026-11-28; planning: [e1-stack-test](planning/e1-stack-test.md))*
+*As a product team, I want the images I deploy as a unit built and run with
+each other on every pull request, so that a set of images that each pass alone
+but fail together is never published.*
+- **Done:** a stack is a directory under `stacks/` listing its images, with a
+  test; `scripts/stack-test.sh` builds them, runs them together on a throwaway
+  cluster and fails if the test fails; pull requests run every stack; the etcd
+  stack (etcd-druid, etcd-wrapper, etcd-backup-restore) is the first.
+- **Why this exists:** on 2026-11-28 every check on the pull request adding
+  the two etcd operand images was green while they could not work under our
+  etcd-druid. The smoke tests run each image in a pod of their own making,
+  next to upstream's peers.
+
 **Story P.2 — OpenCost is certified and published** 🔨 *(approved 2026-11-25; planning: [p2-publish](planning/p2-publish.md))*
 *As the MTO team, I want a certified OpenCost image published with signature,
 SBOM and provenance, so that MTO can reference it by digest.*
@@ -184,7 +197,7 @@ mirror, so that showback works without internet access.*
 - Reloader Console (Partner Connect component `6af9ac3f8523cfd9714c7645`) and Reloader Gateway (`6af9ac54ad3a47dac910b90b`): components exist; their source repository and release tags are not yet known to this repo.
 - First external caller of the reusable workflow: template-operator-v2 (ADR-006).
 - Crossplane core (`images/crossplane`) is added as a `kind: container` image so providers have something certified to run on; first built by the pull request that adds it. Admission (a) checked 2026-11-27: Red Hat's catalog API lists no container repository named or described as Crossplane, from Red Hat or any partner; the only Crossplane entries are operator bundles from IBM (last bundle 2024) and the community (Upbound's `universal-crossplane`, Crossplane 1.5), neither a Red Hat image. ⚠️ The consuming product's name is not confirmed.
-- etcd-druid (`images/etcd-druid`, the operator) is added; first built by the pull request that adds it. Admission (a) to (c) checked 2026-11-28: no Red Hat image (the catalog's "druid" entries are Apache Druid), Apache-2.0, last release 2026-11-04. Admission (d): SCO deploys it (stated by the owner, 2026-11-28). Its two operand images, `etcd-wrapper` v0.8.4 and `etcd-backup-restore` v0.45.3 (the pair used with the `UpgradeEtcdVersion` feature gate on, the chart's default), are added as `images/etcd-wrapper` and `images/etcd-backup-restore` (story P.1a); admission checked 2026-11-28: no Red Hat equivalent (`hi/etcd` is plain etcd, not Gardener's wrapper), Apache-2.0, released 2026-11-03, SCO deploys them. Each is tested next to upstream's image of the other, not yet both of ours together, and not yet driven by our etcd-druid. Not built: the `alpine` init image (only used with a local backup store, and it runs as root) and the older operand pair used with the feature gate off. ⚠️ etcd-druid still defaults to Gardener's images; SCO must point it at ours per `Etcd` or through the operator's image override file.
+- etcd-druid (`images/etcd-druid`, the operator) is added; first built by the pull request that adds it. Admission (a) to (c) checked 2026-11-28: no Red Hat image (the catalog's "druid" entries are Apache Druid), Apache-2.0, last release 2026-11-04. Admission (d): SCO deploys it (stated by the owner, 2026-11-28). Its two operand images, `etcd-wrapper` v0.8.4 and `etcd-backup-restore` v0.45.3 (the pair used with the `UpgradeEtcdVersion` feature gate on, the chart's default), are added as `images/etcd-wrapper` and `images/etcd-backup-restore` (story P.1a); admission checked 2026-11-28: no Red Hat equivalent (`hi/etcd` is plain etcd, not Gardener's wrapper), Apache-2.0, released 2026-11-03, SCO deploys them. Each is smoke-tested next to upstream's image of the other; the three of ours are run together by the etcd stack test (story E.1). Not built: the `alpine` init image (only used with a local backup store, and it runs as root) and the older operand pair used with the feature gate off. ⚠️ etcd-druid still defaults to Gardener's images; SCO must point it at ours per `Etcd` or through the operator's image override file.
 - Crossplane, next step: build one small provider as `kind: xpkg` on pull requests only, and run Red Hat's preflight against the resulting xpkg (ADR-005). The spike of 2026-11-27 showed the pod runs the xpkg itself.
 - First SCO Crossplane provider (ADR-005), after its open questions are answered.
 - Assess the pipeline against SLSA v1 Build L3 and record the result (ADR-007).
