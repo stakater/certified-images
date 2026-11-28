@@ -56,6 +56,15 @@ anything.*
   Renovate app enabled by a repository admin. Everything else in the Done line
   is met; the `ubi-micro` result is in ADR-004.
 
+**Story P.1a — an upstream that vendors its dependencies can be built** 🔨 *(approved 2026-11-28; planning: [p1a-drop-vendor](planning/p1a-drop-vendor.md); decision: ADR-003 rev 3)*
+*As the factory team, I want to build an upstream that commits a `vendor/`
+directory Hermeto rejects, so that etcd-druid's operand images can be built
+without loosening the prefetch.*
+- **Done:** an image may declare `build.dropVendor: true`; the vendored copy is
+  removed before the prefetch and dependencies are fetched and verified against
+  `go.sum` as for any image; a declaration with nothing to drop fails;
+  `etcd-wrapper` and `etcd-backup-restore` build in CI.
+
 **Story P.2 — OpenCost is certified and published** 🔨 *(approved 2026-11-25; planning: [p2-publish](planning/p2-publish.md))*
 *As the MTO team, I want a certified OpenCost image published with signature,
 SBOM and provenance, so that MTO can reference it by digest.*
