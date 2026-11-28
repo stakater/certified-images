@@ -78,6 +78,14 @@ but fail together is never published.*
   etcd-druid. The smoke tests run each image in a pod of their own making,
   next to upstream's peers.
 
+**Story P.1b — an image with a web UI built with pnpm can be built** 🔨 *(approved 2026-11-28; planning: [p1b-pnpm-ui](planning/p1b-pnpm-ui.md); decision: ADR-003 rev 4)*
+*As the factory team, I want to build Prometheus with its web UI from source,
+with the network off, so that MTO gets a Prometheus we patch ourselves and no
+part of it is an artifact someone else built.*
+- **Done:** an image may list `pnpm` lockfiles in `build.prefetch` and build
+  them in a stage of its own with digest-pinned Node and pnpm images;
+  Prometheus builds that way in CI and serves the UI built here.
+
 **Story P.2 — OpenCost is certified and published** 🔨 *(approved 2026-11-25; planning: [p2-publish](planning/p2-publish.md))*
 *As the MTO team, I want a certified OpenCost image published with signature,
 SBOM and provenance, so that MTO can reference it by digest.*
@@ -200,8 +208,8 @@ mirror, so that showback works without internet access.*
 - etcd-druid (`images/etcd-druid`, the operator) is added; first built by the pull request that adds it. Admission (a) to (c) checked 2026-11-28: no Red Hat image (the catalog's "druid" entries are Apache Druid), Apache-2.0, last release 2026-11-04. Admission (d): SCO deploys it (stated by the owner, 2026-11-28). Its two operand images, `etcd-wrapper` v0.8.4 and `etcd-backup-restore` v0.45.3 (the pair used with the `UpgradeEtcdVersion` feature gate on, the chart's default), are added as `images/etcd-wrapper` and `images/etcd-backup-restore` (story P.1a); admission checked 2026-11-28: no Red Hat equivalent (`hi/etcd` is plain etcd, not Gardener's wrapper), Apache-2.0, released 2026-11-03, SCO deploys them. Each is smoke-tested next to upstream's image of the other; the three of ours are run together by the etcd stack test (story E.1). Not built: the `alpine` init image (only used with a local backup store, and it runs as root) and the older operand pair used with the feature gate off. ⚠️ etcd-druid still defaults to Gardener's images; SCO must point it at ours per `Etcd` or through the operator's image override file.
 - Images MTO needs that Red Hat also ships as hardened images, decided per image under ADR-002 rule 1 (rev 10: a Red Hat image must pass our CVE gate, or we build). Scanned 2026-11-27 with our pinned trivy, fixable CRITICAL and HIGH, amd64, the `latest` digests:
   - **Dex:** keep our build. `hi/dex` 2.46.1 has 3 HIGH (the three our build patches); it passes our smoke and functional tests.
-  - **kube-state-metrics:** build ours, next. `hi/kube-state-metrics` 2.20.0 has 2 HIGH in `golang.org/x/net`. A plain Go binary.
-  - **Prometheus:** build ours, after a story for its web UI, which is built with npm and needs a fetcher this pipeline has not used. `hi/prometheus` 3.13.5 has 1 HIGH in `golang.org/x/net`. Until ours exists, use Red Hat's with the finding recorded as a dated exception.
+  - **kube-state-metrics:** build ours: `images/kube-state-metrics`, published 2026-11-28. `hi/kube-state-metrics` 2.20.0 had 2 HIGH in `golang.org/x/net`; upstream's own pins carry 7, so Red Hat does patch dependencies and was behind on the newest.
+  - **Prometheus:** build ours: `images/prometheus` (story P.1b), with its web UI built from source. `hi/prometheus` 3.13.5 had 1 HIGH in `golang.org/x/net`.
   - **PostgreSQL:** use `registry.access.redhat.com/hi/postgresql`, by digest. No finding reported, but ⚠️ trivy could not identify the operating system of the `hi/` images and checked only Go binaries, which PostgreSQL does not have. A scan that covers it is needed before "passes our gate" can be said of it.
   - ⚠️ None of the `hi/` images has been run on OpenShift by us; only Dex was run at all. ⚠️ Operand acceptance and support terms are open questions in ADR-002.
 - Add the Red Hat images our products consume to the daily re-scan, so a pass or a failure of the gate is noticed (ADR-002 rule 1, rev 10).
