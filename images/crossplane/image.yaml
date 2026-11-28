@@ -39,7 +39,10 @@ redhat:
   # as Red Hat-hosted: ADR-002)
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
 
-# Pushed to ghcr.io/stakater/ubi/crossplane, private by default. To make it
-# public, add 'staging: {visibility: public}' in a reviewed PR (ADR-002).
+# Visibility on GHCR (ADR-002). Public on purpose, decided by the owner on
+# 2026-11-28: a rebuild of Apache-2.0 software on UBI.
+staging:
+  visibility: public
+
 consumers:
   - stakater-cloud-orchestrator   # SCO, stated by the owner 2026-11-28
