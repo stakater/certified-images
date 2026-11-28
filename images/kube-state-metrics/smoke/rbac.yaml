@@ -1,0 +1,32 @@
+# Smoke-test fixture (scripts/smoke-test.sh), not a deployment manifest.
+#
+# kube-state-metrics lists and watches the objects it reports on. This grants
+# the test pod's service account read access to the ones the functional test
+# uses and to the common workload types. A deployment grants more: upstream's
+# examples/standard/cluster-role.yaml is the full list. __NAMESPACE__ is
+# replaced with the throwaway test namespace, and both objects are deleted
+# after the test.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: smoke-kube-state-metrics-__NAMESPACE__
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, namespaces, nodes, pods, services]
+    verbs: [list, watch]
+  - apiGroups: [apps]
+    resources: [daemonsets, deployments, replicasets, statefulsets]
+    verbs: [list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: smoke-kube-state-metrics-__NAMESPACE__
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: smoke-kube-state-metrics-__NAMESPACE__
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: __NAMESPACE__

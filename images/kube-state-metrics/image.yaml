@@ -1,0 +1,54 @@
+# One file per artifact (schema modelled on Iron Bank's hardening_manifest.yaml).
+#
+# Admission (a), ADR-002 rule 1 rev 10: Red Hat ships
+# registry.access.redhat.com/hi/kube-state-metrics, but on 2026-11-27 it failed
+# our CVE gate (2 HIGH in golang.org/x/net), so we build.
+kind: container
+name: kube-state-metrics
+displayName: Stakater build of kube-state-metrics
+summary: "kube-state-metrics rebuilt from source on Red Hat UBI"
+description: >-
+  kube-state-metrics listens to the Kubernetes API and exposes Prometheus metrics about the state of objects such as Deployments, Nodes, Pods and ConfigMaps. Rebuilt by Stakater from the upstream source on Red Hat Universal Base Image.
+
+# io.openshift.tags (ADR-009): what people search the catalog for.
+tags: [kube-state-metrics, metrics, prometheus, monitoring, kubernetes]
+
+upstream:
+  repo: https://github.com/kubernetes/kube-state-metrics
+  # renovate: datasource=github-tags depName=kubernetes/kube-state-metrics
+  version: v2.20.0
+  commit: 4ffeda2ef866b0fef372849825a803296483b336   # tag must dereference to this (ADR-003)
+  license: Apache-2.0
+
+build:
+  # Hermeto prefetch input (ADR-003). Typed fetchers only.
+  prefetch: '{"type": "gomod", "path": "."}'
+
+# Differences from upstream's image, on purpose:
+#   - The build date, user and branch are not compiled in, so the same source
+#     gives the same binary. Version, revision and client-go version are.
+#   - Same binary path (/kube-state-metrics) and the same entrypoint with its
+#     two port flags as upstream, so charts that pass arguments keep working.
+test:
+  # Start-up test: the image must exit 0 when run with these arguments.
+  command: ["--help"]
+
+# Smoke test (scripts/smoke-test.sh): run as a pod under restricted pod
+# security and require /healthz. It reads the Kubernetes API, so smoke/rbac.yaml
+# grants the test pod read access. functional/test.sh then checks it reports an
+# object that was just created.
+smoke:
+  port: 8080
+  path: /healthz
+  # Only the kinds smoke/rbac.yaml grants; by default it watches some thirty.
+  args: ["--resources=configmaps,namespaces,nodes,pods,services,daemonsets,deployments,replicasets,statefulsets"]
+
+redhat:
+  # Partner Connect container component (fill after creating the component,
+  # as Red Hat-hosted: ADR-002)
+  componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
+
+# Pushed to ghcr.io/stakater/ubi/kube-state-metrics, private by default. To
+# make it public, add 'staging: {visibility: public}' in a reviewed PR (ADR-002).
+consumers:
+  - multi-tenant-operator   # MTO, stated by the owner 2026-11-27
