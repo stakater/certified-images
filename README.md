@@ -45,6 +45,7 @@ Images:
 | `etcd-druid` | gardener/etcd-druid (the operator only; the etcd pods it creates use three other images, not built here) | Yes | `ghcr.io/stakater/ubi/etcd-druid`, public by declaration | No component yet |
 | `etcd-wrapper` | gardener/etcd-wrapper (the etcd container of etcd-druid's pods) | Yes | `ghcr.io/stakater/ubi/etcd-wrapper`, public by declaration | No component yet |
 | `etcd-backup-restore` | gardener/etcd-backup-restore (`etcdbrctl`, the sidecar of etcd-druid's pods) | Yes | `ghcr.io/stakater/ubi/etcd-backup-restore`, public by declaration | No component yet |
+| `kcp` | kcp-dev/kcp (server, front proxy, virtual workspaces, cache server; no kubectl) | Yes | `ghcr.io/stakater/ubi/kcp`, public by declaration | No component yet |
 
 For how an image reaches a customer through Red Hat, the three ways a component can be set up, and what is proven about each, see [docs/red-hat-distribution.md](docs/red-hat-distribution.md).
 

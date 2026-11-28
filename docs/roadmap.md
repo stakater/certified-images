@@ -207,6 +207,7 @@ mirror, so that showback works without internet access.*
 - Add the Red Hat images our products consume to the daily re-scan, so a pass or a failure of the gate is noticed (ADR-002 rule 1, rev 10).
 - Report the three findings to Red Hat's Hummingbird project (its source is public). A human step.
 - ⚠️ To decide: does MTO have to run on AKS and EKS? Then pulls without a login matter: Red Hat's hardened images allow them, our certified images on Red Hat's partner registry do not, and our GHCR address is not one customers may use today (ADR-002).
+- kcp (`images/kcp`) is added; first built by the pull request that adds it. Admission (a) to (c) checked 2026-11-28: no Red Hat image or operator in the catalog, Apache-2.0, last release 2026-11-04. Admission (d): SCO deploys it (stated by the owner, 2026-11-28). ⚠️ Our image leaves out the `kubectl` binary upstream downloads into its image; whether a chart or the kcp-operator relies on it has not been checked.
 - Crossplane, next step: build one small provider as `kind: xpkg` on pull requests only, and run Red Hat's preflight against the resulting xpkg (ADR-005). The spike of 2026-11-27 showed the pod runs the xpkg itself.
 - First SCO Crossplane provider (ADR-005), after its open questions are answered.
 - Assess the pipeline against SLSA v1 Build L3 and record the result (ADR-007).
