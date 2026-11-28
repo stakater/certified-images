@@ -2,7 +2,9 @@
 #
 # Admission (a), ADR-002 rule 1 rev 10: Red Hat ships
 # registry.access.redhat.com/hi/kube-state-metrics, but on 2026-11-27 it failed
-# our CVE gate (2 HIGH in golang.org/x/net), so we build.
+# our CVE gate (2 HIGH in golang.org/x/net), so we build. Red Hat's image did
+# carry newer versions of x/crypto, x/text and grpc than upstream v2.20.0 pins:
+# it patches some dependencies, and was behind on the newest fixes only.
 kind: container
 name: kube-state-metrics
 displayName: Stakater build of kube-state-metrics
@@ -41,8 +43,11 @@ redhat:
   # Partner Connect container component (fill after creating the component,
   # as Red Hat-hosted: ADR-002)
   componentId: "TODO-PARTNER-CONNECT-COMPONENT-ID"
-# Pushed to ghcr.io/stakater/ubi/kube-state-metrics, private by default. To
-# make it public, add 'staging: {visibility: public}' in a reviewed PR (ADR-002).
+# Visibility on GHCR (ADR-002). Public on purpose, decided by the owner on
+# 2026-11-28: a rebuild of Apache-2.0 software on UBI.
+staging:
+  visibility: public
+
 consumers:
   - multi-tenant-operator # MTO, stated by the owner 2026-11-27
 deviations:
