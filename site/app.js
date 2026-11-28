@@ -166,11 +166,18 @@ function renderCatalog(data, root, foot) {
   const externalCard = el("div", { class: "card", id: "redhat" },
     el("h2", {}, "Used from Red Hat, not built here"),
     para("Where Red Hat ships an image we can use, we use it and say how far we could check it."),
-    data.external.map((x) => el("div", { class: "inner" },
-      el("div", { class: "row" }, el("strong", { class: "big" }, x.name + (x.version ? " " + x.version : "")), el("span", { class: "pill warn" }, x.status)),
-      el("div", { class: "mono wrap-any soft" }, x.address),
+    data.external.map((x) => {
+      const scan = x.scan && x.scan.status === "scanned" ? x.scan : null;
+      return el("div", { class: "inner" },
+      el("div", { class: "row" }, el("strong", { class: "big" }, x.name + (scan && scan.version ? " " + scan.version : "")),
+        scan ? (scan.fixableCriticalHigh === 0 ? ok("No fixable critical or high") : el("span", { class: "pill warn" }, scan.fixableCriticalHigh + " fixable critical or high"))
+          : el("span", { class: "pill warn" }, "Could not be scanned")),
+      el("div", { class: "mono wrap-any soft" }, scan ? x.address + "@" + scan.digest : x.address),
+      scan ? el("div", { class: "small" }, scan.total + " detected in all (" + SEVERITIES.filter((sev) => scan.bySeverity[sev]).map((sev) => scan.bySeverity[sev] + " " + sev.toLowerCase()).join(", ") + ") · " + scan.scanner + " · scanned " + when(scan.scannedAt))
+        : el("div", { class: "small" }, "It could not be scanned when this page was generated. That is not a clean result."),
       el("div", { class: "soft", style: "font-size:14px" }, x.note),
-      x.more ? el("a", { href: x.more, style: "font-size:14px" }, "Details") : null)));
+      x.more ? el("a", { href: x.more, style: "font-size:14px" }, "Details") : null);
+    }));
 
   root.replaceChildren(hero, list, el("section", { class: "pair" }, stackCard, externalCard));
   foot.replaceChildren(...footer(data));

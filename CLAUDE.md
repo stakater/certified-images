@@ -237,7 +237,7 @@ scripts/publish-rehearsal.sh   the registry half of a publish against a local re
 scripts/changed-images.sh      which images a merge touched
 scripts/notify-slack.sh        tells a Slack channel an image was published; the webhook is the secret SLACK_WEBHOOK_URL
 scripts/site-data.sh           the catalogue site's data: every public image, its releases, evidence and Red Hat status
-site/                          the catalogue site's pages (static; they render site-data's JSON), and external.json for images used from Red Hat
+site/                          the catalogue site's pages (static; they render site-data's JSON), and external.json: images used from Red Hat, scanned with grype at each generation
 scripts/rescan-image.sh        scans the newest published release; scan-findings.sh and latest-release.sh support it
 scripts/report-findings.sh     one GitHub issue per image for its open findings
 scripts/auto-fix.sh            prepares the fix: bump-base.sh for UBI packages, fix-go-deps.sh + update-deviations.sh for Go modules

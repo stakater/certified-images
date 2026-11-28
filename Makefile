@@ -9,7 +9,7 @@ ENGINE ?= docker
 # Tool images are pinned in tools.env, the one place Renovate maintains.
 include tools.env
 export HADOLINT_IMAGE SHELLCHECK_IMAGE ACTIONLINT_IMAGE RENOVATE_IMAGE YQ_IMAGE \
-	HERMETO_IMAGE SYFT_IMAGE TRIVY_IMAGE PREFLIGHT_IMAGE REGISTRY_IMAGE CRANE_IMAGE KIND_NODE_IMAGE COSIGN_IMAGE
+	HERMETO_IMAGE SYFT_IMAGE TRIVY_IMAGE PREFLIGHT_IMAGE REGISTRY_IMAGE CRANE_IMAGE KIND_NODE_IMAGE COSIGN_IMAGE GRYPE_IMAGE
 
 # What each target checks. Tests override these to point at broken fixtures.
 CONTAINERFILES  ?= $(wildcard images/*/Containerfile)

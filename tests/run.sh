@@ -1230,6 +1230,12 @@ expect_pass "site-data: offline, the signature is unknown, never verified" sdd '
 expect_pass "site-data: offline, the container configuration is absent" sdd '.container == null'
 expect_pass "site-data: the catalogue carries the scan summary of each image, unknown offline" \
   sdq '[.images[].scan.status] == ["unknown","unknown"] and ([.images[].scan | has("total")] | any | not)'
+# Images used from elsewhere (Red Hat's) are scanned too, when online. Offline
+# their scan is unknown, never clean.
+expect_pass "site-data: offline, an image used from elsewhere has an unknown scan with no counts" \
+  sdq '.external[0].scan.status == "unknown" and (.external[0].scan | has("total") | not)'
+expect_pass "site-data: an image used from elsewhere keeps its hand-written fields" \
+  sdq '.external[0].address == "registry.example/db" and .external[0].note == "n"'
 mkdir -p "$SD/broken/images/bad" "$SD/broken/out" && printf 'kind: container\nname: [unclosed\n' >"$SD/broken/images/bad/image.yaml"
 expect_fail "site-data: a manifest that cannot be read fails, the image is not skipped" "bad" \
   env SITE_OFFLINE=1 SITE_IMAGES_DIR="$SD/broken/images" SITE_STACKS_DIR="$SD/stacks" SITE_EXTERNAL="$SD/external.json" scripts/site-data.sh "$SD/broken/out"

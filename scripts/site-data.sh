@@ -10,6 +10,8 @@
 #   - GitHub: whether each release's build provenance verifies
 #     (gh attestation verify), and the daily re-scan's open issue, if any
 #   - Red Hat's public catalogue: whether the image is listed there
+#   - for each image used from elsewhere (site/external.json): a scan of it
+#     with grype, which reads Red Hat Hardened Images where trivy cannot
 #   - the newest release itself: its container configuration and size (crane),
 #     its signature and its signed SBOMs (cosign), and a scan of it for
 #     vulnerabilities of every severity (trivy), all with the pinned tools
@@ -43,6 +45,7 @@ MAX_RELEASES=${SITE_MAX_RELEASES:-12}
 SIGNER_RE="^https://github.com/$REPO/\\.github/workflows/build-certify\\.yaml@refs/heads/main\$"
 ISSUER=https://token.actions.githubusercontent.com
 TRIVY_CACHE=${SITE_TRIVY_CACHE:-$ROOT/.ctx/.site-trivy-cache}
+GRYPE_CACHE=${SITE_GRYPE_CACHE:-$ROOT/.ctx/.site-grype-cache}
 offline=false
 [ -z "${SITE_OFFLINE:-}" ] || offline=true
 
@@ -294,9 +297,54 @@ for sdir in "$STACKS"/*/; do
     jq -cs --arg name "$(basename "$sdir")" '{name: $name, images: .}' >>"$work/stacks.jsonl"
 done
 
+# external_scan <address> <tag>: a scan of an image we use from elsewhere, with
+# grype. The build gate's scanner, trivy, does not recognise the packages of
+# Red Hat Hardened Images and reports nothing for them; grype does (seen
+# 2026-11-28: it reproduces Red Hat's own published scan). Same rule as for our
+# images: what cannot be read is "unknown", with no numbers.
+external_scan() {
+  local address=$1 tag=$2 digest version
+  if [ "$offline" = true ] || [ -z "$address" ]; then
+    echo '{"status":"unknown"}'
+    return
+  fi
+  digest=$(crane digest --platform linux/amd64 "$address:$tag" 2>/dev/null | tail -n 1) || digest=""
+  [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || {
+    echo '{"status":"unknown"}'
+    return
+  }
+  version=$(crane config "$address@$digest" 2>/dev/null | jq -r '.config.Labels.version // ""' 2>/dev/null) || version=""
+  mkdir -p "$GRYPE_CACHE"
+  if "$ENGINE" run --rm -v "$GRYPE_CACHE:/db" -e GRYPE_DB_CACHE_DIR=/db "$GRYPE_IMAGE" "registry:$address@$digest" -o json >"$work/grype.json" 2>/dev/null &&
+    jq -e '.matches' "$work/grype.json" >/dev/null 2>&1; then
+    jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg digest "$digest" --arg version "$version" --arg tag "$tag" '
+      ([ .matches[] | { id: .vulnerability.id, severity: (.vulnerability.severity | ascii_upcase),
+                        fixed: ((.vulnerability.fix.state // "") == "fixed") } ]
+       | group_by(.id) | map({ id: .[0].id, severity: .[0].severity, fixed: (map(.fixed) | any) })) as $f
+      | { status: "scanned", scanner: ("grype " + (.descriptor.version // "")), scannedAt: $at,
+          tag: $tag, version: $version, digest: $digest, recognised: ((.distro.name // "") != ""),
+          total: ($f | length),
+          bySeverity: ($f | group_by(.severity) | map({(.[0].severity): length}) | add // {}),
+          fixableCriticalHigh: ([$f[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .fixed)] | length) }
+      | if .recognised then . else {status: "unknown"} end' "$work/grype.json"
+  else
+    echo '{"status":"unknown"}'
+  fi
+}
+
+: >"$work/external.jsonl"
+count=$(jq 'length' "$EXTERNAL")
+i=0
+while [ "$i" -lt "$count" ]; do
+  entry=$(jq -c ".[$i]" "$EXTERNAL")
+  scan=$(external_scan "$(printf '%s' "$entry" | jq -r '.address // ""')" "$(printf '%s' "$entry" | jq -r '.tag // "latest"')")
+  printf '%s' "$entry" | jq -c --argjson scan "$scan" '. + {scan: $scan}' >>"$work/external.jsonl"
+  i=$((i + 1))
+done
+
 commit=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)
-jq -n --slurpfile images "$work/images.jsonl" --slurpfile stacks "$work/stacks.jsonl" --slurpfile external "$EXTERNAL" \
+jq -n --slurpfile images "$work/images.jsonl" --slurpfile stacks "$work/stacks.jsonl" --slurpfile external "$work/external.jsonl" \
   --arg generated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$commit" --arg repo "$REPO" --argjson offline "$offline" '
   { generated: $generated, commit: $commit, source: ("https://github.com/" + $repo), offline: $offline,
-    images: ($images | sort_by(.name)), stacks: $stacks, external: $external[0] }' >"$OUT/catalog.json"
+    images: ($images | sort_by(.name)), stacks: $stacks, external: $external }' >"$OUT/catalog.json"
 echo "site-data: $(jq '.images | length' "$OUT/catalog.json") public images written to $OUT/catalog.json" >&2
