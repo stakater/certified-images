@@ -26,7 +26,7 @@ WORKDIR /src
 # Upstream builds main.go with no version flags.
 RUN . /tmp/hermeto.env && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/etcd-wrapper . && \
-    mkdir /out/home
+    mkdir -p /out/rootfs/home/nonroot && chmod 0770 /out/rootfs/home/nonroot
 
 ########## runtime stage (certified) ##########
 FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
@@ -86,10 +86,16 @@ COPY --from=build /src/LICENSES/ /licenses/LICENSES/
 
 # Same path as upstream's image: etcd-druid passes arguments only.
 COPY --from=build --chown=1001:0 --chmod=0555 /out/etcd-wrapper /etcd-wrapper
-# A home directory writable by group 0, at upstream's path. The backup-restore
-# sidecar writes the etcd configuration into HOME; under an arbitrary UID
-# (OpenShift) HOME would otherwise be "/", which is not writable.
-COPY --from=build --chown=1001:0 --chmod=0770 /out/home /home/nonroot
+# A writable home directory at upstream's path. The backup-restore sidecar
+# writes the etcd configuration into HOME. Two callers must be able to write:
+#   - etcd-druid runs its etcd pods as UID 65532 with group 65532, the user of
+#     upstream's distroless image, so the directory is owned by 65532;
+#   - OpenShift runs a pod as an arbitrary UID in group 0, for which HOME would
+#     otherwise be "/", so group 0 may write too.
+# The directory is copied with its parent, so that its own mode (0770, set in
+# the build stage) comes along; copying the directory itself would copy only
+# its contents into a new directory with the default mode.
+COPY --from=build --chown=65532:0 /out/rootfs/home/ /home/
 ENV HOME=/home/nonroot
 WORKDIR /
 

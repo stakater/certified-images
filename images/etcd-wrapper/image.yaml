@@ -29,9 +29,11 @@ build:
   dropVendor: true
 # Differences from upstream's image, on purpose:
 #   - Built from the modules go.sum names, not from upstream's vendor/ copy.
-#   - HOME is /home/nonroot, as in upstream's distroless image, and writable by
-#     group 0: the backup-restore sidecar writes the etcd configuration there,
-#     and under an arbitrary UID (OpenShift) HOME would otherwise be "/".
+#   - HOME is /home/nonroot, as in upstream's distroless image. The
+#     backup-restore sidecar writes the etcd configuration there. It is owned
+#     by UID 65532, which etcd-druid runs its etcd pods as, and writable by
+#     group 0, for an arbitrary UID (OpenShift), whose HOME would otherwise
+#     be "/".
 #   - The binary is at the same path as upstream's (/etcd-wrapper) with the same
 #     entrypoint, because etcd-druid passes arguments only.
 test:
